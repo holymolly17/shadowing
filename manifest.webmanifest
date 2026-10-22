@@ -1,0 +1,16 @@
+{
+  "name": "쉐도잉 플레이어",
+  "short_name": "쉐도잉",
+  "description": "MP3와 스크립트로 문장 단위 쉐도잉 연습",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#EEF1EF",
+  "theme_color": "#1D6B57",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

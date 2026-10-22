@@ -1,0 +1,1449 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>쉐도잉 플레이어</title>
+<meta name="theme-color" content="#1D6B57">
+<meta name="description" content="MP3와 스크립트로 문장 단위 쉐도잉 연습">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="쉐도잉">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Noto+Serif+KR:wght@400;500&display=swap">
+<style>
+/* Layout: script-reader app — library rail on the left (drawer on phones), script column centered, transport bar pinned to the bottom. */
+:root {
+  --bg: #EEF1EF;
+  --panel: #F8FAF9;
+  --ink: #17201D;
+  --muted: #66726D;
+  --line: #D6DDD9;
+  --hover: #E4EAE7;
+  --accent: #1D6B57;
+  --accent-ink: #FFFFFF;
+  --mark: #FBE28A;
+  --danger: #B3402F;
+  --scrim: rgba(12, 20, 17, 0.45);
+  --shadow: 0 1px 2px rgba(20, 30, 26, 0.06), 0 10px 28px rgba(20, 30, 26, 0.12);
+  --f-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-script: "Newsreader", "Noto Serif KR", "AppleMyungjo", Georgia, serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --gl: max(16px, env(safe-area-inset-left, 0px));
+  --gr: max(16px, env(safe-area-inset-right, 0px));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F1513; --panel: #161E1B; --ink: #E5ECE8; --muted: #8E9B95; --line: #27322E; --hover: #1E2925;
+    --accent: #5FC2A2; --accent-ink: #0B1311; --mark: #5B4C14; --danger: #F07A66;
+    --scrim: rgba(0, 0, 0, 0.6); --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px rgba(0,0,0,.45);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F1513; --panel: #161E1B; --ink: #E5ECE8; --muted: #8E9B95; --line: #27322E; --hover: #1E2925;
+  --accent: #5FC2A2; --accent-ink: #0B1311; --mark: #5B4C14; --danger: #F07A66;
+  --scrim: rgba(0, 0, 0, 0.6); --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px rgba(0,0,0,.45);
+  color-scheme: dark;
+}
+
+html { height: 100%; box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
+body { height: 100%; background: var(--bg); color: var(--ink); font-family: var(--f-ui); font-size: 14px; overflow: hidden; -webkit-tap-highlight-color: transparent; }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+svg { display: block; }
+[hidden] { display: none !important; }
+
+.app { height: 100%; display: grid; grid-template-columns: 300px minmax(0, 1fr); }
+
+/* Sidebar */
+.sidebar { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; padding-left: var(--gl); }
+.side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 18px 16px 14px 0; }
+.brand { font-family: var(--f-script); font-size: 1.35rem; font-weight: 500; letter-spacing: -0.01em; }
+.brand small { display: block; font-family: var(--f-ui); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.track-list { list-style: none; margin: 0; padding: 4px 10px 12px 0; overflow-y: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 2px; }
+.track { width: 100%; text-align: left; border: 0; background: transparent; border-radius: 10px; padding: 10px 12px; display: grid; gap: 2px; }
+.track:hover { background: var(--hover); }
+.track[aria-current="true"] { background: var(--accent); color: var(--accent-ink); }
+.track[aria-current="true"] .tk-meta { color: inherit; opacity: 0.8; }
+.tk-title { font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.tk-meta { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.side-empty { color: var(--muted); padding: 10px 12px; font-size: 0.85rem; line-height: 1.5; }
+.side-foot { border-top: 1px solid var(--line); padding: 12px 16px 14px 0; font-size: 0.75rem; color: var(--muted); line-height: 1.5; display: grid; gap: 6px; }
+.store-note { display: flex; gap: 6px; align-items: flex-start; }
+.store-note::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-top: 0.45em; }
+.store-note.local::before { background: var(--muted); }
+.keys kbd { font-family: var(--f-mono); font-size: 0.7rem; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+
+.scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 30; }
+
+/* Main */
+.main { display: flex; flex-direction: column; min-height: 0; min-width: 0; height: 100%; }
+.topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 14px var(--gr) 12px 28px; border-bottom: 1px solid var(--line); }
+.tb-title { flex: 1 1 220px; min-width: 0; }
+.tb-title h1 { margin: 0; font-size: 1.05rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; text-wrap: balance; }
+.tb-title .meta { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.icon-btn.menu-btn { display: none; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; font-weight: 500; font-size: 0.85rem; white-space: nowrap; }
+.btn:hover { background: var(--hover); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--danger); }
+.btn[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.icon-btn { width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid var(--line); background: transparent; flex: none; }
+
+.script-view { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.script-in { max-width: 780px; margin: 0 auto; padding: 22px var(--gr) 32vh 28px; }
+.line { display: grid; grid-template-columns: 3.4rem minmax(0, 1fr); gap: 0 12px; padding: 10px 12px; border-radius: 10px; cursor: pointer; position: relative; }
+.line:hover { background: var(--hover); }
+.ts { font-family: var(--f-mono); font-size: 0.72rem; color: var(--muted); padding-top: 0.55em; font-variant-numeric: tabular-nums; }
+.tx { font-family: var(--f-script); font-size: 1.3rem; line-height: 1.6; overflow-wrap: anywhere; transition: color .2s, filter .2s; }
+.line.past .tx { color: var(--muted); }
+.line.on .tx { color: var(--ink); }
+.line.on .tx > span { background: linear-gradient(transparent 56%, var(--mark) 56%, var(--mark) 94%, transparent 94%); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.line.on .ts { color: var(--accent); font-weight: 500; }
+.lp { position: absolute; left: 12px; right: 12px; bottom: 3px; height: 2px; border-radius: 2px; background: var(--accent); transform-origin: left; transform: scaleX(var(--p, 0)); opacity: 0; }
+.line.on .lp { opacity: 0.55; }
+.blind .tx { filter: blur(7px); }
+@media (hover: hover) { .blind .line:hover .tx { filter: none; } }
+.adj { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.adj button { height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); font-size: 0.78rem; font-family: var(--f-mono); }
+.adj button:hover { border-color: var(--accent); }
+.line.cursor { box-shadow: inset 3px 0 0 var(--accent); }
+
+/* Empty / loading */
+.empty { max-width: 620px; margin: 0 auto; padding: 48px var(--gr) 48px 28px; }
+.empty h2 { font-family: var(--f-script); font-weight: 500; font-size: 1.9rem; line-height: 1.25; margin: 0 0 12px; text-wrap: balance; }
+.empty p { color: var(--muted); line-height: 1.65; margin: 0 0 20px; }
+.steps { list-style: none; padding: 0; margin: 0 0 24px; display: grid; gap: 14px; counter-reset: s; }
+.steps li { display: grid; grid-template-columns: 28px minmax(0,1fr); gap: 12px; line-height: 1.55; counter-increment: s; }
+.steps li::before { content: counter(s); width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; font-family: var(--f-mono); font-size: 0.8rem; color: var(--accent); }
+.fmt { margin-top: 28px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow: hidden; }
+.fmt-h { padding: 10px 14px; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); }
+.fmt pre { margin: 0; padding: 14px; font-family: var(--f-mono); font-size: 0.8rem; line-height: 1.6; overflow-x: auto; }
+
+/* Sync bar */
+.syncbar { border-top: 1px solid var(--line); background: var(--panel); padding: 12px var(--gr) 12px 28px; display: grid; gap: 10px; }
+.sync-help { font-size: 0.8rem; color: var(--muted); line-height: 1.5; }
+.sync-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tap { flex: 1 1 260px; min-width: 0; height: auto; min-height: 48px; padding: 8px 16px; border-radius: 12px; flex-direction: column; align-items: flex-start; gap: 0; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.tap small { font-weight: 400; opacity: 0.85; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; }
+.sync-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Player */
+.player { border-top: 1px solid var(--line); background: var(--panel); position: relative; }
+.player-in { padding: 8px var(--gr) 12px 28px; display: grid; gap: 6px; }
+.seek-row { display: flex; align-items: center; gap: 10px; font-family: var(--f-mono); font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.seek-row span { min-width: 3.2em; }
+.seek-row span:last-child { text-align: right; }
+.ctrl-row { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: 8px; }
+.ctrl-left { display: flex; gap: 6px; }
+.ctrl-right { display: flex; justify-content: flex-end; }
+.ctrl-mid { display: flex; align-items: center; gap: 10px; }
+.tg { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; font-size: 0.8rem; font-weight: 500; white-space: nowrap; }
+.tg[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.round { width: 44px; height: 44px; border-radius: 50%; border: 0; background: transparent; display: grid; place-items: center; }
+.round:hover { background: var(--hover); }
+.play { width: 56px; height: 56px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; }
+.play:disabled { opacity: 0.45; cursor: default; }
+.speed { height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; font-family: var(--f-mono); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.speed[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+
+input[type=range] { -webkit-appearance: none; appearance: none; background: transparent; height: 28px; margin: 0; flex: 1; min-width: 0; --fill: 0%; }
+input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(90deg, var(--accent) var(--fill), var(--line) var(--fill)); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 2px solid var(--panel); margin-top: -6px; }
+input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line); }
+input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--accent); }
+input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid var(--panel); }
+
+.pop { position: absolute; right: var(--gr); bottom: calc(100% + 8px); width: min(340px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 16px; z-index: 20; display: grid; gap: 14px; }
+.pop h3 { margin: 0 0 8px; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.rate-row { display: flex; align-items: center; gap: 10px; }
+.rate-val { font-family: var(--f-mono); font-size: 1.4rem; min-width: 3.6em; text-align: center; font-variant-numeric: tabular-nums; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; font-family: var(--f-mono); font-size: 0.8rem; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.pop .note { font-size: 0.75rem; color: var(--muted); line-height: 1.5; margin: 6px 0 0; }
+
+.gap { position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%); border: 0; background: var(--ink); color: var(--bg); border-radius: 999px; padding: 9px 16px 11px; font-size: 0.82rem; font-weight: 500; box-shadow: var(--shadow); z-index: 15; white-space: nowrap; overflow: hidden; }
+.gap i { position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--accent); transform-origin: left; transform: scaleX(var(--g, 1)); }
+
+/* Overlays */
+.overlay { position: fixed; inset: 0; z-index: 50; background: var(--scrim); display: flex; align-items: center; justify-content: center; padding: max(16px, env(safe-area-inset-top, 0px)) var(--gr) max(16px, env(safe-area-inset-bottom, 0px)) var(--gl); }
+.sheet { background: var(--panel); width: min(640px, 100%); max-height: 100%; overflow-y: auto; border-radius: 16px; padding: 22px; box-shadow: var(--shadow); display: grid; gap: 16px; }
+.sheet h2 { margin: 0; font-size: 1.15rem; font-weight: 600; }
+.sheet.small { width: min(420px, 100%); }
+.field { display: grid; gap: 6px; }
+.field > label, .field > .lbl { font-size: 0.8rem; font-weight: 500; }
+.field input[type=text], .field textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); padding: 10px 12px; font-size: 16px; }
+.field textarea { min-height: 190px; resize: vertical; font-family: var(--f-script); line-height: 1.55; }
+.drop { position: relative; border: 1.5px dashed var(--line); border-radius: 12px; padding: 16px; display: flex; align-items: center; gap: 12px; background: var(--bg); }
+.drop.over { border-color: var(--accent); }
+.drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.drop .d-txt { min-width: 0; display: grid; gap: 2px; }
+.drop strong { font-weight: 500; overflow-wrap: anywhere; }
+.drop span { font-size: 0.78rem; color: var(--muted); }
+.hint { font-size: 0.78rem; color: var(--muted); line-height: 1.5; }
+.hint.ok { color: var(--accent); }
+.hint.err { color: var(--danger); }
+.row-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.link-btn { border: 0; background: none; color: var(--accent); font-size: 0.8rem; font-weight: 500; padding: 0; position: relative; overflow: hidden; }
+.link-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+details.help { font-size: 0.8rem; color: var(--muted); }
+details.help summary { cursor: pointer; }
+details.help pre { font-family: var(--f-mono); font-size: 0.75rem; background: var(--bg); border-radius: 8px; padding: 10px; overflow-x: auto; margin: 8px 0 0; color: var(--ink); }
+.actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.status { font-size: 0.8rem; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.toast { position: fixed; left: 50%; bottom: calc(150px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 0.85rem; z-index: 60; max-width: calc(100vw - 32px); box-shadow: var(--shadow); }
+
+/* Phone */
+@media (max-width: 860px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .sidebar { position: fixed; top: 0; bottom: 0; left: 0; width: min(320px, 86vw); z-index: 40; transform: translateX(-102%); transition: transform .25s ease; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); box-shadow: var(--shadow); }
+  .app.nav-open .sidebar { transform: none; }
+  .icon-btn.menu-btn { display: inline-flex; }
+  .topbar, .script-in, .player-in, .syncbar, .empty { padding-left: var(--gl); }
+  .topbar { padding-top: 10px; padding-bottom: 10px; }
+  .tb-title { flex-basis: 0; }
+  .tools { width: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .tools::-webkit-scrollbar { display: none; }
+  .script-in { padding-top: 12px; }
+  .line { grid-template-columns: minmax(0, 1fr); padding: 10px; }
+  .ts { padding-top: 0; }
+  .adj { grid-column: 1; }
+  .tx { font-size: 1.2rem; }
+}
+@media (max-width: 520px) {
+  .tg { flex-direction: column; height: auto; padding: 4px 6px; gap: 2px; font-size: 0.65rem; border: 0; border-radius: 10px; }
+  .ctrl-row { display: flex; justify-content: space-between; gap: 4px; }
+  .ctrl-left { gap: 2px; }
+  .ctrl-mid { gap: 2px; }
+  .round { width: 40px; height: 40px; }
+  .speed { padding: 0 10px; }
+  .overlay { align-items: flex-end; padding: max(16px, env(safe-area-inset-top, 0px)) 0 0; }
+  .sheet { border-radius: 16px 16px 0 0; padding: 20px var(--gr) calc(20px + env(safe-area-inset-bottom, 0px)) var(--gl); width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .tx { transition: none; }
+  .spin { animation-duration: 2s; }
+}
+
+/* Auth */
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; }
+.auth { position: fixed; inset: 0; z-index: 70; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: max(24px, env(safe-area-inset-top, 0px)) var(--gr) max(24px, env(safe-area-inset-bottom, 0px)) var(--gl); overflow-y: auto; }
+.auth-card { width: min(380px, 100%); display: grid; gap: 14px; }
+.auth-card img { width: 64px; height: 64px; border-radius: 15px; }
+.auth-card h1 { margin: 0; font-family: var(--f-script); font-weight: 500; font-size: 1.8rem; }
+.auth-card p { margin: 0; color: var(--muted); line-height: 1.6; }
+.auth-card .btn { height: 44px; font-size: 0.95rem; }
+.auth-switch { text-align: center; font-size: 0.85rem; color: var(--muted); }
+.auth-switch button { border: 0; background: none; color: var(--accent); font-weight: 500; padding: 4px; }
+.who { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.who span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who button { border: 0; background: none; color: var(--accent); font-size: 0.75rem; padding: 2px 0; flex: none; }
+.dl-badge { font-size: 0.7rem; }
+</style>
+</head>
+<body>
+
+
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar" aria-label="자료 목록">
+    <div class="side-head">
+      <div class="brand">쉐도잉 플레이어<small>Shadowing</small></div>
+      <button class="btn primary" id="btnAdd" type="button">
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>새 자료
+      </button>
+    </div>
+    <ul class="track-list" id="trackList"><li class="side-empty">불러오는 중…</li></ul>
+    <div class="side-foot">
+      <div class="who"><span id="whoEmail"></span><button type="button" id="btnLogout">로그아웃</button></div>
+      <div class="store-note" id="storeNote">연결 중…</div>
+      <div class="keys" id="keys"><kbd>Space</kbd> 재생 · <kbd>←</kbd><kbd>→</kbd> 문장 이동 · <kbd>R</kbd> 반복 · <kbd>S</kbd> 따라 말하기 · <kbd>[</kbd><kbd>]</kbd> 속도</div>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="btnMenu" type="button" aria-label="자료 목록 열기">
+        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M2 4h14M2 9h14M2 14h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </button>
+      <div class="tb-title">
+        <h1 id="trackTitle">쉐도잉 플레이어</h1>
+        <div class="meta" id="trackMeta"></div>
+      </div>
+      <div class="tools" id="tools" hidden>
+        <button class="btn" id="btnBlind" type="button" aria-pressed="false">텍스트 가리기</button>
+        <button class="btn" id="btnSync" type="button" aria-pressed="false">싱크 조정</button>
+        <button class="btn" id="btnEdit" type="button">편집</button>
+        <button class="btn danger" id="btnDel" type="button">삭제</button>
+      </div>
+    </header>
+
+    <section class="script-view" id="scriptView">
+      <div class="script-in" id="scriptIn"></div>
+      <div class="empty" id="emptyView" hidden>
+        <h2>MP3와 스크립트를 올리고 문장 단위로 따라 말해 보세요</h2>
+        <p>음성이 재생되는 위치에 맞춰 스크립트가 하이라이트되고, 문장을 누르면 그 부분부터 다시 들을 수 있어요.</p>
+        <ol class="steps">
+          <li><span><b>새 자료</b>에서 음성 파일(MP3)과 스크립트를 넣어요.</span></li>
+          <li><span>음성의 쉬는 구간을 분석해 문장마다 시작 시간을 자동으로 맞춰요. 어긋난 곳은 <b>싱크 조정</b>에서 고칠 수 있어요.</span></li>
+          <li><span>문장을 눌러 원하는 곳부터 듣고, 반복·따라 말하기·속도 조절로 연습해요.</span></li>
+        </ol>
+        <button class="btn primary" id="btnAdd2" type="button">새 자료 추가</button>
+        <div class="fmt">
+          <div class="fmt-h">스크립트 예시</div>
+<pre>Good morning, everyone.
+Thanks for joining the call today.
+Let's start with a quick update from each team.
+
+(시간이 있으면 더 정확해요)
+[00:00.5] Good morning, everyone.
+[00:02.1] Thanks for joining the call today.</pre>
+        </div>
+      </div>
+    </section>
+
+    <div class="syncbar" id="syncBar" hidden>
+      <div class="sync-help">재생하면서 표시된 문장이 들리기 시작할 때 버튼을 누르세요. 문장을 누르면 그 문장부터 다시 맞출 수 있고, 각 문장의 ± 버튼으로 0.1초씩 조정할 수 있어요.</div>
+      <div class="sync-row">
+        <button class="btn tap" id="btnTap" type="button"><span>이 문장 시작</span><small id="tapNext"></small></button>
+        <div class="sync-actions">
+          <button class="btn" id="btnAuto" type="button">자동으로 다시 맞추기</button>
+          <button class="btn" id="btnSyncCancel" type="button">취소</button>
+          <button class="btn primary" id="btnSyncSave" type="button">저장</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="player" id="player">
+      <button class="gap" id="gapPill" type="button" hidden><span id="gapTxt">따라 말해 보세요</span><i></i></button>
+      <div class="pop" id="ratePop" hidden>
+        <div>
+          <h3>재생 속도</h3>
+          <div class="rate-row">
+            <button class="round" id="rateDown" type="button" aria-label="속도 낮추기"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+            <input type="range" id="rateRange" min="0.5" max="2" step="0.05" value="1" aria-label="재생 속도">
+            <button class="round" id="rateUp" type="button" aria-label="속도 높이기"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8 3v10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+            <span class="rate-val" id="rateVal">1.00×</span>
+          </div>
+          <div class="chips" id="rateChips" style="margin-top:10px"></div>
+        </div>
+        <div>
+          <h3>따라 말하기 쉬는 시간</h3>
+          <div class="chips" id="gapChips"></div>
+          <p class="note">문장이 끝나면 멈추고, 그 문장 길이에 이 배수를 곱한 만큼 기다린 뒤 다음 문장으로 넘어가요.</p>
+        </div>
+      </div>
+      <div class="player-in">
+        <div class="seek-row">
+          <span id="tCur">0:00</span>
+          <input type="range" id="seek" min="0" max="1" step="0.01" value="0" aria-label="재생 위치">
+          <span id="tDur">0:00</span>
+        </div>
+        <div class="ctrl-row">
+          <div class="ctrl-left">
+            <button class="tg" id="btnRepeat" type="button" aria-pressed="false" title="현재 문장 반복 (R)">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3 8V7a3 3 0 0 1 3-3h8m0 0-2.5-2.5M14 4l-2.5 2.5M15 10v1a3 3 0 0 1-3 3H4m0 0 2.5 2.5M4 14l2.5-2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>문장 반복</span>
+            </button>
+            <button class="tg" id="btnShadow" type="button" aria-pressed="false" title="문장마다 멈추고 따라 말하기 (S)">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="6.5" y="2" width="5" height="9" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M3.5 8.5a5.5 5.5 0 0 0 11 0M9 14v2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>따라 말하기</span>
+            </button>
+          </div>
+          <div class="ctrl-mid">
+            <button class="round" id="btnPrev" type="button" aria-label="이전 문장">
+              <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 4v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M16 4.5v11L7.5 10z" fill="currentColor"/></svg>
+            </button>
+            <button class="play" id="btnPlay" type="button" aria-label="재생" disabled>
+              <svg id="icPlay" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><path d="M7 4.5v13l11-6.5z" fill="currentColor"/></svg>
+              <svg id="icPause" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true" hidden><rect x="5.5" y="4.5" width="4" height="13" rx="1" fill="currentColor"/><rect x="12.5" y="4.5" width="4" height="13" rx="1" fill="currentColor"/></svg>
+            </button>
+            <button class="round" id="btnNext" type="button" aria-label="다음 문장">
+              <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M15 4v12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4.5v11l8.5-5.5z" fill="currentColor"/></svg>
+            </button>
+          </div>
+          <div class="ctrl-right">
+            <button class="speed" id="btnRate" type="button" aria-expanded="false" aria-controls="ratePop" title="재생 속도">1.0×</button>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </main>
+</div>
+
+<!-- Add / edit -->
+<div class="overlay" id="editor" hidden>
+  <form class="sheet" id="editorForm" novalidate>
+    <h2 id="edTitle">새 자료</h2>
+    <div class="field">
+      <label for="fTitle">제목</label>
+      <input type="text" id="fTitle" placeholder="예: TED — How to speak so that people want to listen" autocomplete="off">
+    </div>
+    <div class="field" id="fileField">
+      <span class="lbl">음성 파일</span>
+      <div class="drop" id="drop">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M11 21V6l12-2.5V18" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="8" cy="21" r="3" stroke="currentColor" stroke-width="1.6"/><circle cx="20" cy="18" r="3" stroke="currentColor" stroke-width="1.6"/></svg>
+        <div class="d-txt"><strong id="fileName">MP3 파일을 선택하거나 여기로 끌어 놓으세요</strong><span id="fileInfo">MP3, M4A, WAV</span></div>
+        <input type="file" id="fFile" accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg" aria-label="음성 파일 선택">
+      </div>
+    </div>
+    <div class="field">
+      <div class="row-between">
+        <label for="fScript">스크립트</label>
+        <span class="link-btn">파일에서 불러오기 (.txt .srt .vtt .lrc)<input type="file" id="fScriptFile" accept=".txt,.srt,.vtt,.lrc,text/plain" aria-label="스크립트 파일 불러오기"></span>
+      </div>
+      <textarea id="fScript" placeholder="한 줄에 한 문장씩 붙여 넣으세요."></textarea>
+      <div class="hint" id="scriptHint">한 줄에 한 문장씩 넣으면 음성을 분석해 시간을 자동으로 맞춰요.</div>
+      <details class="help">
+        <summary>지원하는 스크립트 형식</summary>
+<pre>1) 한 줄에 한 문장 → 음성의 쉬는 구간으로 자동 정렬
+   Hello, nice to meet you.
+   How was your weekend?
+
+2) 줄 앞에 시간 표기 → 그 시간 그대로 사용
+   [00:03.2] Hello, nice to meet you.
+   00:05 How was your weekend?
+
+3) SRT · VTT · LRC 자막 파일</pre>
+      </details>
+    </div>
+    <div class="status" id="edStatus" hidden><span class="spin"></span><span id="edStatusTxt"></span></div>
+    <div class="hint err" id="edErr" hidden></div>
+    <div class="actions">
+      <button class="btn" type="button" id="edCancel">취소</button>
+      <button class="btn primary" type="submit" id="edSave">추가하기</button>
+    </div>
+  </form>
+</div>
+
+<!-- Confirm -->
+<div class="overlay" id="confirm" hidden>
+  <div class="sheet small" role="alertdialog" aria-labelledby="cfTitle">
+    <h2 id="cfTitle">자료를 삭제할까요?</h2>
+    <div class="hint" id="cfBody">음성과 스크립트가 함께 삭제되고 되돌릴 수 없어요.</div>
+    <div class="actions">
+      <button class="btn" type="button" id="cfNo">취소</button>
+      <button class="btn primary" type="button" id="cfYes" style="background:var(--danger);border-color:var(--danger)">삭제</button>
+    </div>
+  </div>
+</div>
+
+<div class="auth" id="auth" hidden>
+  <form class="auth-card" id="authForm" novalidate>
+    <img src="icons/icon-192.png" alt="">
+    <h1>쉐도잉 플레이어</h1>
+    <p id="authLead">로그인하면 PC와 휴대폰에서 같은 자료로 이어서 연습할 수 있어요.</p>
+    <div class="field"><label for="aEmail">이메일</label><input type="text" inputmode="email" autocomplete="email" id="aEmail"></div>
+    <div class="field"><label for="aPw">비밀번호</label><input type="password" autocomplete="current-password" id="aPw" style="width:100%;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px 12px;font-size:16px"></div>
+    <div class="hint err" id="authErr" hidden></div>
+    <div class="hint ok" id="authOk" hidden></div>
+    <button class="btn primary" type="submit" id="authSubmit">로그인</button>
+    <div class="auth-switch"><span id="authSwitchTxt">처음이신가요?</span> <button type="button" id="authSwitch">회원가입</button></div>
+  </form>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+<audio id="audio" preload="auto" playsinline></audio>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+(() => {
+const $ = (s) => document.querySelector(s);
+const audio = $('#audio');
+const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- small helpers ---------- */
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem('shd:' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('shd:' + k, JSON.stringify(v)); } catch (e) {} },
+};
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function fmt(t, frac) {
+  if (!isFinite(t) || t < 0) t = 0;
+  const m = Math.floor(t / 60), s = t - m * 60;
+  if (frac) return m + ':' + (s < 10 ? '0' : '') + s.toFixed(1);
+  return m + ':' + String(Math.floor(s)).padStart(2, '0');
+}
+const fmtSize = (b) => b > 1048576 ? (b / 1048576).toFixed(1) + 'MB' : Math.round(b / 1024) + 'KB';
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const r2 = (x) => Math.round(x * 100) / 100;
+let toastTimer;
+function toast(msg, ms = 3200) {
+  const el = $('#toast'); el.textContent = msg; el.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, ms);
+}
+
+/* ---------- script parsing ---------- */
+function toSec(str) {
+  const p = String(str).trim().replace(',', '.').split(':').map(Number);
+  if (p.some((x) => isNaN(x))) return null;
+  return p.reduce((a, x) => a * 60 + x, 0);
+}
+function splitLong(line) {
+  if (line.length <= 160) return [line];
+  const parts = line.match(/[^.!?。！？]+(?:[.!?。！？]+["'”’)\]]*|$)/g) || [line];
+  return parts.map((s) => s.trim()).filter(Boolean);
+}
+function parseScript(raw) {
+  const text = String(raw || '').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+  if (/(\d{1,2}:)?\d{1,2}:\d{2}[.,]\d{1,3}\s*-->/.test(text)) {
+    const segs = [];
+    for (const block of text.split(/\n\s*\n/)) {
+      const lines = block.split('\n').map((s) => s.trim()).filter(Boolean);
+      const k = lines.findIndex((l) => l.includes('-->'));
+      if (k < 0) continue;
+      const s = toSec(lines[k].split('-->')[0]);
+      const t = lines.slice(k + 1).join(' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+      if (t && s != null) segs.push({ s, t });
+    }
+    segs.sort((a, b) => a.s - b.s);
+    return { timed: true, kind: /^\s*WEBVTT/.test(text) ? 'VTT' : 'SRT', segs };
+  }
+  const lines = text.split('\n').map((s) => s.trim()).filter(Boolean)
+    .filter((l) => !/^\[(ar|ti|al|au|by|offset|length|re|ve|#):/i.test(l));
+  const bracket = /^\[((?:\d{1,2}:)?\d{1,3}:\d{2}(?:[.,]\d{1,3})?)\]\s*(.+)$/;
+  const bare = /^((?:\d{1,2}:)?\d{1,2}:\d{2}(?:[.,]\d{1,3})?)\s+[-–—]?\s*(.+)$/;
+  const timed = [];
+  for (const l of lines) {
+    const m = l.match(bracket) || l.match(bare);
+    if (m) { const s = toSec(m[1]); if (s != null && m[2].trim()) timed.push({ s, t: m[2].trim() }); }
+  }
+  if (timed.length >= 2 && timed.length >= lines.length * 0.6) {
+    timed.sort((a, b) => a.s - b.s);
+    return { timed: true, kind: '시간 표기', segs: timed };
+  }
+  const texts = [];
+  for (const l of lines) texts.push(...splitLong(l));
+  return { timed: false, texts };
+}
+
+/* ---------- audio analysis & alignment ---------- */
+async function analyzeAudio(blob) {
+  const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!OAC) return null;
+  const buf = await blob.arrayBuffer();
+  let ab = null;
+  for (const sr of [8000, 16000, 22050, 44100]) {
+    try {
+      const ctx = new OAC(1, sr, sr);
+      ab = await new Promise((res, rej) => {
+        const p = ctx.decodeAudioData(buf.slice(0), res, rej);
+        if (p && p.catch) p.catch(rej);
+      });
+      if (ab) break;
+    } catch (e) { ab = null; }
+  }
+  if (!ab) return null;
+  const sr = ab.sampleRate, data = ab.getChannelData(0);
+  const hopN = Math.max(1, Math.round(sr * 0.02));
+  const F = Math.floor(data.length / hopN);
+  const db = new Float32Array(F);
+  for (let f = 0; f < F; f++) {
+    let s = 0; const o = f * hopN;
+    for (let k = 0; k < hopN; k++) { const x = data[o + k]; s += x * x; }
+    db[f] = 10 * Math.log10(s / hopN + 1e-10);
+  }
+  return { db, hop: hopN / sr, duration: ab.duration };
+}
+function weight(t) {
+  let w = 4;
+  for (const ch of t) {
+    if (/[぀-ヿ㐀-鿿가-힯]/.test(ch)) w += 2.4;
+    else if (/[A-Za-z0-9À-ɏ]/.test(ch)) w += 1;
+    else if (/[,;:]/.test(ch)) w += 2;
+  }
+  return w;
+}
+function proportional(texts, a, b) {
+  const w = texts.map(weight), tot = w.reduce((x, y) => x + y, 0);
+  let acc = 0;
+  return texts.map((t, i) => { const s = a + (b - a) * acc / tot; acc += w[i]; return { s: r2(Math.max(0, s)), t }; });
+}
+function align(texts, an, duration) {
+  const N = texts.length;
+  if (!N) return [];
+  if (!an || !an.db || an.db.length < 10) return proportional(texts, 0, duration || N * 3);
+  const { db, hop } = an, F = db.length;
+  const sorted = Float32Array.from(db).sort();
+  const lo = sorted[Math.floor(F * 0.1)], hi = sorted[Math.floor(F * 0.95)];
+  const thr = lo + (hi - lo) * 0.35;
+  const sil = new Uint8Array(F);
+  for (let i = 0; i < F; i++) sil[i] = db[i] < thr ? 1 : 0;
+  let a = 0; while (a < F && sil[a]) a++;
+  let b = F - 1; while (b > 0 && sil[b]) b--;
+  if (a >= b) return proportional(texts, 0, an.duration);
+  const sStart = a * hop, sEnd = (b + 1) * hop;
+  const first = { s: r2(Math.max(0, sStart - 0.15)), t: texts[0] };
+  if (N === 1) return [first];
+
+  const cands = [];
+  for (let i = a; i <= b;) {
+    if (sil[i]) {
+      let j = i; while (j <= b && sil[j]) j++;
+      const len = (j - i) * hop;
+      if (len >= 0.15) cands.push({ t: j * hop, len });
+      i = j;
+    } else i++;
+  }
+  const w = texts.map(weight), tot = w.reduce((x, y) => x + y, 0);
+  const est = []; let acc = w[0];
+  for (let k = 1; k < N; k++) { est.push(sStart + (sEnd - sStart) * acc / tot); acc += w[k]; }
+  const K = N - 1, M = cands.length, avg = (sEnd - sStart) / N;
+  let starts;
+  if (M >= K) {
+    const cost = (k, j) => { const d = (cands[j].t - est[k]) / avg; return d * d - 0.8 * Math.min(cands[j].len, 1.2) / 1.2; };
+    const back = new Int32Array(K * M);
+    let prev = new Float64Array(M).fill(Infinity);
+    for (let j = 0; j <= M - K; j++) prev[j] = cost(0, j);
+    for (let k = 1; k < K; k++) {
+      const cur = new Float64Array(M).fill(Infinity);
+      let best = Infinity, bi = -1;
+      for (let j = k; j <= M - K + k; j++) {
+        if (prev[j - 1] < best) { best = prev[j - 1]; bi = j - 1; }
+        cur[j] = best + cost(k, j); back[k * M + j] = bi;
+      }
+      prev = cur;
+    }
+    let bj = -1, bv = Infinity;
+    for (let j = 0; j < M; j++) if (prev[j] < bv) { bv = prev[j]; bj = j; }
+    starts = new Array(K);
+    for (let k = K - 1; k >= 0; k--) { starts[k] = cands[bj].t; bj = back[k * M + bj]; }
+  } else {
+    const used = new Set();
+    starts = est.map((e) => {
+      let bj = -1, bd = avg * 0.6;
+      cands.forEach((c, j) => { const d = Math.abs(c.t - e); if (d < bd && !used.has(j)) { bd = d; bj = j; } });
+      if (bj >= 0) { used.add(bj); return cands[bj].t; }
+      return e;
+    });
+    for (let k = 1; k < K; k++) if (starts[k] < starts[k - 1] + 0.3) starts[k] = starts[k - 1] + 0.3;
+  }
+  return [first, ...texts.slice(1).map((t, k) => ({ s: r2(Math.max(0, starts[k] - 0.12)), t }))];
+}
+function getDuration(blob) {
+  return new Promise((res) => {
+    const a = new Audio(), u = URL.createObjectURL(blob);
+    a.preload = 'metadata';
+    a.onloadedmetadata = () => { const d = a.duration; URL.revokeObjectURL(u); res(isFinite(d) ? d : 0); };
+    a.onerror = () => { URL.revokeObjectURL(u); res(0); };
+    a.src = u;
+  });
+}
+
+/* ---------- storage: Supabase (sync) + on-device audio cache (offline) ---------- */
+const CFG = window.SHADOWING_CONFIG || {};
+const configured = !!(CFG.supabaseUrl && CFG.supabaseAnonKey && !/YOUR_/.test(CFG.supabaseUrl + CFG.supabaseAnonKey));
+const sb = configured && window.supabase ? window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }) : null;
+const IDB = {
+  db: null,
+  open() {
+    if (this.db) return Promise.resolve(this.db);
+    return new Promise((res, rej) => {
+      let r;
+      try { r = indexedDB.open('shadowing-app', 1); } catch (e) { rej(e); return; }
+      r.onupgradeneeded = () => { r.result.createObjectStore('audio'); };
+      r.onsuccess = () => { this.db = r.result; res(this.db); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  async run(mode, fn) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const tx = db.transaction('audio', mode), req = fn(tx.objectStore('audio'));
+      tx.oncomplete = () => res(req && req.result);
+      tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
+    });
+  },
+};
+const AudioCache = {
+  async get(id) { try { const v = await IDB.run('readonly', (s) => s.get(id)); return v ? new Blob([v.buf], { type: v.type }) : null; } catch (e) { return null; } },
+  async put(id, blob) { try { const buf = await blob.arrayBuffer(); await IDB.run('readwrite', (s) => s.put({ buf, type: blob.type || 'audio/mpeg' }, id)); } catch (e) {} },
+  async del(id) { try { await IDB.run('readwrite', (s) => s.delete(id)); } catch (e) {} },
+  async keys() { try { return (await IDB.run('readonly', (s) => s.getAllKeys())) || []; } catch (e) { return []; } },
+};
+const rowToTrack = (r) => ({ id: r.id, title: r.title, segments: r.segments || [], duration: r.duration || 0, audioPath: r.audio_path, audioType: r.audio_type, size: r.size, createdAt: Date.parse(r.created_at) || 0 });
+const SupaStore = {
+  canWrite: true,
+  async init(onChange, uid) { this.onChange = onChange; this.uid = uid; await this.refresh(); },
+  async refresh() {
+    let list;
+    const { data, error } = await sb.from('tracks').select('*').order('created_at', { ascending: false });
+    if (error) {
+      list = LS.get('list:' + this.uid, []);
+      setNote(navigator.onLine ? '서버에 연결하지 못했어요. 저장해 둔 목록을 보여드려요.' : '오프라인이에요. 이 기기에 받아 둔 자료만 재생할 수 있어요.', true);
+    } else {
+      list = data.map(rowToTrack);
+      LS.set('list:' + this.uid, list);
+      setNote('PC와 휴대폰에서 같은 계정으로 로그인하면 자료가 함께 보여요.', false);
+    }
+    this.cached = new Set(await AudioCache.keys());
+    this.onChange(list);
+  },
+  async add(meta, file, onProgress) {
+    const id = (crypto.randomUUID && crypto.randomUUID()) || newId();
+    const ext = ((file.name.match(/\.([a-z0-9]+)$/i) || [])[1] || 'mp3').toLowerCase();
+    const path = `${this.uid}/${id}.${ext}`;
+    onProgress && onProgress(1, 1);
+    const up = await sb.storage.from('audio').upload(path, file, { contentType: file.type || 'audio/mpeg', upsert: false });
+    if (up.error) throw up.error;
+    const { error } = await sb.from('tracks').insert({ id, user_id: this.uid, title: meta.title, segments: meta.segments, duration: meta.duration, audio_path: path, audio_type: file.type || 'audio/mpeg', size: file.size });
+    if (error) { await sb.storage.from('audio').remove([path]); throw error; }
+    await AudioCache.put(id, file);
+    await this.refresh();
+    return id;
+  },
+  async update(id, fields) {
+    const row = {};
+    if (fields.title != null) row.title = fields.title;
+    if (fields.segments) row.segments = fields.segments;
+    const { error } = await sb.from('tracks').update(row).eq('id', id);
+    if (error) throw error;
+    await this.refresh();
+  },
+  async remove(t) {
+    const { error } = await sb.from('tracks').delete().eq('id', t.id);
+    if (error) throw error;
+    await sb.storage.from('audio').remove([t.audioPath]);
+    await AudioCache.del(t.id);
+    await this.refresh();
+  },
+  async audioBlob(t) {
+    const c = await AudioCache.get(t.id);
+    if (c) return c;
+    const { data, error } = await sb.storage.from('audio').download(t.audioPath);
+    if (error) throw new Error(navigator.onLine ? '음성 파일을 받지 못했어요.' : '오프라인이라 아직 받지 않은 음성은 재생할 수 없어요.');
+    const blob = new Blob([data], { type: t.audioType || 'audio/mpeg' });
+    await AudioCache.put(t.id, blob);
+    if (this.cached) this.cached.add(t.id);
+    return blob;
+  },
+};
+function setNote(msg, warn) { const n = $('#storeNote'); n.textContent = msg; n.className = 'store-note' + (warn ? ' local' : ''); }
+let Store = null;
+
+/* ---------- state ---------- */
+const state = {
+  tracks: [], cur: null, segs: [], idx: -1, loopIdx: -1,
+  rate: LS.get('rate', 1), gapFactor: LS.get('gap', 1.2),
+  repeat: false, shadow: LS.get('shadow', false), blind: false,
+  sync: false, draft: null, cursor: 0,
+  gapCb: null, gapUntil: 0, gapTotal: 0, gapTimer: 0,
+  userScrollAt: 0, pendingSelect: null, loadingAudio: false, dragging: false,
+};
+const urlCache = new Map(); // id -> {url, blob}
+const activeSegs = () => (state.sync && state.draft ? state.draft : state.segs);
+function idxAt(segs, t) {
+  let lo = 0, hi = segs.length - 1, r = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (segs[m].s <= t) { r = m; lo = m + 1; } else hi = m - 1; }
+  return r;
+}
+const segEnd = (segs, i) => (i + 1 < segs.length ? segs[i + 1].s : (isFinite(audio.duration) ? audio.duration : Infinity));
+
+/* ---------- rendering ---------- */
+function renderList() {
+  const ul = $('#trackList');
+  if (!Store) return;
+  if (!state.tracks.length) {
+    ul.innerHTML = '<li class="side-empty">아직 자료가 없어요. <b>새 자료</b>로 음성과 스크립트를 추가하세요.</li>';
+    return;
+  }
+  ul.innerHTML = state.tracks.map((t) => `<li><button class="track" type="button" data-id="${esc(t.id)}" aria-current="${state.cur && state.cur.id === t.id}">
+    <span class="tk-title">${esc(t.title || '제목 없음')}</span>
+    <span class="tk-meta">문장 ${(t.segments || []).length}개 · ${fmt(t.duration || 0)}${Store.cached && Store.cached.has(t.id) ? ' · 기기에 저장됨' : ''}</span></button></li>`).join('');
+}
+function renderHeader() {
+  const t = state.cur;
+  $('#trackTitle').textContent = t ? (t.title || '제목 없음') : '쉐도잉 플레이어';
+  $('#trackMeta').textContent = t ? `문장 ${state.segs.length}개 · ${fmt(t.duration || 0)}` + (state.loadingAudio ? ' · 음성 불러오는 중…' : '') : '';
+  $('#tools').hidden = !t;
+  const w = !!(Store && Store.canWrite);
+  $('#btnSync').hidden = !w; $('#btnEdit').hidden = !w; $('#btnDel').hidden = !w;
+  $('#btnAdd').hidden = !w; $('#btnAdd2').hidden = !w;
+  document.title = t ? (t.title + ' · 쉐도잉') : '쉐도잉 플레이어';
+}
+function renderLines() {
+  const box = $('#scriptIn');
+  const segs = activeSegs();
+  $('#emptyView').hidden = !!state.cur || !Store || state.tracks.length > 0;
+  if (!state.cur) { box.innerHTML = ''; return; }
+  box.innerHTML = segs.map((s, i) => `<div class="line" data-i="${i}" role="button" tabindex="0"><span class="ts">${fmt(s.s, state.sync)}</span><span class="tx"><span>${esc(s.t)}</span></span>${state.sync ? `<span class="adj"><button type="button" data-act="minus" data-i="${i}">−0.1</button><button type="button" data-act="plus" data-i="${i}">+0.1</button><button type="button" data-act="here" data-i="${i}">현재 위치로</button></span>` : ''}<i class="lp"></i></div>`).join('');
+  box.classList.toggle('blind', state.blind);
+  state.idx = -99;
+  setActive(idxAt(segs, audio.currentTime || 0), true);
+  markCursor();
+}
+function setActive(i, force) {
+  if (i === state.idx && !force) return;
+  const lines = $('#scriptIn').children;
+  if (state.idx >= 0 && lines[state.idx]) { lines[state.idx].classList.remove('on'); lines[state.idx].style.removeProperty('--p'); }
+  for (let k = 0; k < lines.length; k++) lines[k].classList.toggle('past', k < i);
+  state.idx = i;
+  const el = lines[i];
+  if (el) {
+    el.classList.add('on');
+    if (Date.now() - state.userScrollAt > 2500) el.scrollIntoView({ block: 'center', behavior: reduceMotion || force ? 'auto' : 'smooth' });
+  }
+}
+function updateTime(t) {
+  const d = isFinite(audio.duration) ? audio.duration : (state.cur && state.cur.duration) || 0;
+  if (!state.dragging) {
+    const seek = $('#seek');
+    seek.max = d || 1; seek.value = t;
+    seek.style.setProperty('--fill', (d ? (t / d) * 100 : 0) + '%');
+    $('#tCur').textContent = fmt(t);
+  }
+  $('#tDur').textContent = fmt(d);
+  const segs = activeSegs(), el = $('#scriptIn').children[state.idx];
+  if (el && state.idx >= 0) {
+    const s = segs[state.idx].s, e = segEnd(segs, state.idx);
+    el.style.setProperty('--p', Math.max(0, Math.min(1, (t - s) / Math.max(0.1, e - s))).toFixed(3));
+  }
+}
+
+/* ---------- playback ---------- */
+let raf = 0;
+function tick() {
+  raf = 0;
+  const t = audio.currentTime, segs = activeSegs();
+  const i = idxAt(segs, t);
+  if (!audio.paused && !state.sync && segs.length) {
+    if (state.repeat || state.shadow) {
+      if (state.loopIdx < 0) state.loopIdx = Math.max(0, i);
+      if (t >= segEnd(segs, state.loopIdx) - 0.04) { onSegEnd(state.loopIdx); }
+    } else state.loopIdx = i;
+  }
+  setActive(idxAt(segs, audio.currentTime));
+  updateTime(audio.currentTime);
+  if (!audio.paused) raf = requestAnimationFrame(tick);
+}
+function kick() { if (!raf) raf = requestAnimationFrame(tick); }
+function onSegEnd(k) {
+  const segs = activeSegs();
+  if (state.shadow) {
+    audio.pause();
+    const len = (segEnd(segs, k) - segs[k].s) / state.rate;
+    const wait = Math.min(20, Math.max(1, len * state.gapFactor + 0.3));
+    const next = state.repeat ? k : k + 1;
+    startGap(wait, next < segs.length ? `따라 말해 보세요` : '마지막 문장이에요', () => {
+      if (next >= segs.length) return;
+      seekTo(segs[next].s); state.loopIdx = next; play();
+    });
+  } else if (state.repeat) {
+    seekTo(segs[k].s); state.loopIdx = k;
+    if (audio.paused) play();
+  }
+}
+function startGap(sec, label, cb) {
+  stopGap();
+  state.gapCb = cb; state.gapTotal = sec * 1000; state.gapUntil = performance.now() + sec * 1000;
+  $('#gapTxt').textContent = label + ' · 누르면 바로 넘어가요';
+  $('#gapPill').hidden = false;
+  state.gapTimer = setTimeout(finishGap, sec * 1000);
+  const anim = () => {
+    if (!state.gapCb) return;
+    const left = Math.max(0, state.gapUntil - performance.now());
+    $('#gapPill').style.setProperty('--g', (left / state.gapTotal).toFixed(3));
+    requestAnimationFrame(anim);
+  };
+  anim();
+}
+function stopGap() { clearTimeout(state.gapTimer); state.gapCb = null; $('#gapPill').hidden = true; }
+function finishGap() { const cb = state.gapCb; stopGap(); if (cb) cb(); }
+function seekTo(t) { try { audio.currentTime = Math.max(0, t + 0.001); } catch (e) {} updateTime(t); }
+function play() {
+  if (!audio.src) return;
+  const p = audio.play();
+  if (p && p.catch) p.catch((e) => { if (e && e.name !== 'AbortError') toast('재생 버튼을 한 번 더 눌러 주세요.'); });
+}
+function togglePlay() {
+  if (!state.cur || !audio.src) return;
+  if (state.gapCb) { finishGap(); return; }
+  if (audio.paused) {
+    const segs = activeSegs();
+    state.loopIdx = Math.max(0, idxAt(segs, audio.currentTime));
+    if (segs.length && (state.repeat || state.shadow) && audio.currentTime >= segEnd(segs, state.loopIdx) - 0.05) {
+      state.loopIdx = Math.min(segs.length - 1, state.loopIdx + 1); seekTo(segs[state.loopIdx].s);
+    }
+    play();
+  } else audio.pause();
+}
+function seekLine(i) {
+  const segs = activeSegs();
+  if (!segs[i]) return;
+  stopGap();
+  seekTo(segs[i].s);
+  state.loopIdx = i; state.userScrollAt = 0;
+  setActive(i);
+  if (state.sync) { state.cursor = i + 1; markCursor(); }
+  if (audio.paused) play();
+}
+function stepSeg(d) {
+  const segs = activeSegs();
+  if (!segs.length) return;
+  const t = audio.currentTime;
+  let i = idxAt(segs, t), target;
+  if (d < 0) target = i >= 0 && t - segs[i].s > 1.2 ? i : i - 1;
+  else target = i + 1;
+  seekLine(Math.max(0, Math.min(segs.length - 1, target)));
+}
+function setRate(r) {
+  r = Math.round(Math.max(0.5, Math.min(2, r)) * 20) / 20;
+  state.rate = r;
+  audio.defaultPlaybackRate = r; audio.playbackRate = r;
+  LS.set('rate', r);
+  $('#btnRate').textContent = (r % 1 === 0 ? r.toFixed(1) : String(r)) + '×';
+  $('#rateVal').textContent = r.toFixed(2) + '×';
+  const rr = $('#rateRange'); rr.value = r; rr.style.setProperty('--fill', ((r - 0.5) / 1.5 * 100) + '%');
+  document.querySelectorAll('#rateChips .chip').forEach((c) => c.setAttribute('aria-pressed', String(Number(c.dataset.v) === r)));
+}
+function setGap(g) {
+  state.gapFactor = g; LS.set('gap', g);
+  document.querySelectorAll('#gapChips .chip').forEach((c) => c.setAttribute('aria-pressed', String(Number(c.dataset.v) === g)));
+}
+function setToggle(name, on) {
+  state[name] = on;
+  const btn = name === 'repeat' ? $('#btnRepeat') : $('#btnShadow');
+  btn.setAttribute('aria-pressed', String(on));
+  if (name === 'shadow') LS.set('shadow', on);
+  if (!on && state.gapCb && !(state.shadow)) stopGap();
+  state.loopIdx = Math.max(0, idxAt(activeSegs(), audio.currentTime));
+}
+
+let wakeLock = null;
+async function lockScreen(on) {
+  try {
+    if (on && !wakeLock && navigator.wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); }
+    else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch (e) { wakeLock = null; }
+}
+
+audio.addEventListener('play', () => { $('#icPlay').hidden = true; $('#icPause').hidden = false; $('#btnPlay').setAttribute('aria-label', '일시정지'); kick(); lockScreen(true); });
+audio.addEventListener('pause', () => {
+  $('#icPlay').hidden = false; $('#icPause').hidden = true; $('#btnPlay').setAttribute('aria-label', '재생');
+  if (!state.gapCb) lockScreen(false);
+  savePos();
+});
+audio.addEventListener('seeked', () => { kick(); });
+audio.addEventListener('timeupdate', () => { if (audio.paused) kick(); throttleSave(); });
+audio.addEventListener('loadedmetadata', () => updateTime(audio.currentTime));
+audio.addEventListener('ended', () => {
+  const segs = activeSegs();
+  if (segs.length && (state.repeat || state.shadow) && !state.sync) onSegEnd(segs.length - 1);
+});
+audio.addEventListener('ratechange', () => { if (Math.abs(audio.playbackRate - state.rate) > 0.001) audio.playbackRate = state.rate; });
+
+let lastSave = 0;
+function savePos() { if (state.cur) LS.set('pos:' + state.cur.id, Math.round(audio.currentTime * 10) / 10); }
+function throttleSave() { const n = Date.now(); if (n - lastSave > 2000) { lastSave = n; savePos(); } }
+
+/* ---------- track selection ---------- */
+async function getBlob(t) {
+  const c = urlCache.get(t.id);
+  if (c) return c.blob;
+  const blob = await Store.audioBlob(t);
+  cacheBlob(t.id, blob);
+  return blob;
+}
+function cacheBlob(id, blob) {
+  if (urlCache.has(id)) return urlCache.get(id);
+  const entry = { blob, url: URL.createObjectURL(blob) };
+  urlCache.set(id, entry);
+  while (urlCache.size > 3) {
+    const [k, v] = urlCache.entries().next().value;
+    if (state.cur && k === state.cur.id) { urlCache.delete(k); urlCache.set(k, v); continue; }
+    URL.revokeObjectURL(v.url); urlCache.delete(k);
+  }
+  return entry;
+}
+async function selectTrack(id) {
+  const t = state.tracks.find((x) => x.id === id);
+  if (!t) return;
+  savePos();
+  stopGap(); if (state.sync) exitSync();
+  audio.pause();
+  state.cur = t; state.segs = t.segments || []; state.idx = -1; state.loopIdx = -1;
+  LS.set('last', id);
+  closeNav();
+  state.loadingAudio = true;
+  $('#btnPlay').disabled = true;
+  renderHeader(); renderList(); renderLines();
+  audio.removeAttribute('src'); audio.load();
+  updateTime(0);
+  try {
+    await getBlob(t);
+    if (state.cur !== t) return;
+    const entry = urlCache.get(t.id);
+    const pos = LS.get('pos:' + id, 0);
+    audio.src = entry.url;
+    audio.defaultPlaybackRate = state.rate; audio.playbackRate = state.rate;
+    audio.preservesPitch = true; audio.webkitPreservesPitch = true;
+    audio.addEventListener('loadedmetadata', () => {
+      if (pos > 0 && pos < audio.duration - 1) audio.currentTime = pos;
+      kick();
+    }, { once: true });
+    $('#btnPlay').disabled = false;
+    setMediaSession(t);
+  } catch (e) {
+    toast(e.message || '음성 파일을 불러오지 못했어요.', 5000);
+  } finally {
+    if (state.cur === t) { state.loadingAudio = false; renderHeader(); }
+  }
+}
+function setMediaSession(t) {
+  if (!('mediaSession' in navigator)) return;
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: t.title || '쉐도잉', artist: '쉐도잉 플레이어' });
+    navigator.mediaSession.setActionHandler('play', () => togglePlay());
+    navigator.mediaSession.setActionHandler('pause', () => audio.pause());
+    navigator.mediaSession.setActionHandler('previoustrack', () => stepSeg(-1));
+    navigator.mediaSession.setActionHandler('nexttrack', () => stepSeg(1));
+  } catch (e) {}
+}
+function onTracks(list) {
+  state.tracks = list;
+  if (state.pendingSelect && list.some((t) => t.id === state.pendingSelect)) {
+    const id = state.pendingSelect; state.pendingSelect = null;
+    selectTrack(id); return;
+  }
+  if (state.cur) {
+    const fresh = list.find((t) => t.id === state.cur.id);
+    if (!fresh) {
+      state.cur = null; state.segs = []; audio.pause(); audio.removeAttribute('src'); audio.load();
+      $('#btnPlay').disabled = true;
+    } else {
+      const changed = JSON.stringify(fresh.segments) !== JSON.stringify(state.cur.segments);
+      state.cur = fresh;
+      if (changed && !state.sync) { state.segs = fresh.segments || []; renderLines(); }
+    }
+  }
+  if (!state.cur && list.length) {
+    const last = LS.get('last', null);
+    const pick = list.find((t) => t.id === last) || list[0];
+    renderList();
+    selectTrack(pick.id); return;
+  }
+  renderHeader(); renderList(); renderLines();
+}
+
+/* ---------- sync editing ---------- */
+function enterSync() {
+  if (!state.cur) return;
+  state.sync = true;
+  state.draft = state.segs.map((s) => ({ ...s }));
+  stopGap();
+  const i = idxAt(state.draft, audio.currentTime);
+  state.cursor = audio.currentTime < 0.5 ? 0 : Math.min(state.draft.length, i + 1);
+  $('#btnSync').setAttribute('aria-pressed', 'true');
+  $('#syncBar').hidden = false;
+  renderLines();
+}
+function exitSync() {
+  state.sync = false; state.draft = null;
+  $('#btnSync').setAttribute('aria-pressed', 'false');
+  $('#syncBar').hidden = true;
+  renderLines();
+}
+function markCursor() {
+  if (!state.sync) return;
+  const lines = $('#scriptIn').children;
+  for (let k = 0; k < lines.length; k++) lines[k].classList.toggle('cursor', k === state.cursor);
+  const seg = state.draft[state.cursor];
+  $('#tapNext').textContent = seg ? `${state.cursor + 1}. ${seg.t}` : '마지막 문장까지 맞췄어요. 저장을 누르세요.';
+  $('#btnTap').disabled = !seg;
+}
+function normalizeAround(i) {
+  const d = state.draft;
+  for (let j = i + 1; j < d.length; j++) if (d[j].s < d[j - 1].s + 0.3) d[j].s = r2(d[j - 1].s + 0.3);
+  for (let j = i - 1; j >= 0; j--) if (d[j].s > d[j + 1].s - 0.3) d[j].s = r2(Math.max(0, d[j + 1].s - 0.3));
+}
+function refreshTimes() {
+  const lines = $('#scriptIn').children;
+  state.draft.forEach((s, k) => { const ts = lines[k] && lines[k].querySelector('.ts'); if (ts) ts.textContent = fmt(s.s, true); });
+  setActive(idxAt(state.draft, audio.currentTime), false);
+}
+function setDraftStart(i, t) {
+  const d = state.draft;
+  if (!d || !d[i]) return;
+  d[i].s = r2(Math.max(0, t));
+  normalizeAround(i);
+  refreshTimes();
+}
+function tapSync() {
+  if (!state.sync || state.cursor >= state.draft.length) return;
+  if (audio.paused) { play(); toast('재생을 시작했어요. 문장이 들리기 시작할 때 누르세요.'); return; }
+  setDraftStart(state.cursor, audio.currentTime - 0.15);
+  state.cursor++;
+  markCursor();
+}
+async function autoAlign() {
+  if (!state.cur) return;
+  const btn = $('#btnAuto'); btn.disabled = true; btn.textContent = '분석 중…';
+  try {
+    const blob = await getBlob(state.cur);
+    const an = await analyzeAudio(blob);
+    const dur = an ? an.duration : (audio.duration || state.cur.duration);
+    state.draft = align(state.draft.map((s) => s.t), an, dur);
+    renderLines();
+    toast(an ? '음성을 분석해 다시 맞췄어요. 확인 후 저장하세요.' : '음성을 분석하지 못해 글자 수 비율로 나눴어요.');
+  } catch (e) { toast('다시 맞추지 못했어요: ' + (e.message || e)); }
+  finally { btn.disabled = false; btn.textContent = '자동으로 다시 맞추기'; }
+}
+async function saveSync() {
+  const t = state.cur, segs = state.draft.map((s) => ({ s: r2(s.s), t: s.t }));
+  const btn = $('#btnSyncSave'); btn.disabled = true;
+  try {
+    await Store.update(t.id, { segments: segs });
+    state.segs = segs; t.segments = segs;
+    exitSync();
+    toast('싱크를 저장했어요.');
+  } catch (e) { toast('저장하지 못했어요: ' + (e.message || e.code || e)); }
+  finally { btn.disabled = false; }
+}
+
+/* ---------- editor ---------- */
+let editMode = null, pickedFile = null, initialScript = '';
+function openEditor(mode) {
+  editMode = mode; pickedFile = null;
+  const ed = $('#editor');
+  $('#edErr').hidden = true; $('#edStatus').hidden = true;
+  $('#fFile').value = ''; $('#fScriptFile').value = '';
+  if (mode === 'edit' && state.cur) {
+    $('#edTitle').textContent = '자료 편집';
+    $('#edSave').textContent = '저장';
+    $('#fTitle').value = state.cur.title || '';
+    initialScript = state.segs.map((s) => s.t).join('\n');
+    $('#fScript').value = initialScript;
+    $('#fileField').hidden = true;
+  } else {
+    $('#edTitle').textContent = '새 자료';
+    $('#edSave').textContent = '추가하기';
+    $('#fTitle').value = ''; $('#fScript').value = ''; initialScript = '';
+    $('#fileField').hidden = false;
+    setPicked(null);
+  }
+  updateHint();
+  ed.hidden = false; setBusy(false);
+  setTimeout(() => (mode === 'edit' ? $('#fTitle') : $('#fFile')).focus({ preventScroll: true }), 30);
+}
+function closeEditor() { $('#editor').hidden = true; }
+function setPicked(f) {
+  pickedFile = f;
+  $('#fileName').textContent = f ? f.name : 'MP3 파일을 선택하거나 여기로 끌어 놓으세요';
+  $('#fileInfo').textContent = f ? fmtSize(f.size) : 'MP3, M4A, WAV';
+  if (f && !$('#fTitle').value.trim()) $('#fTitle').value = f.name.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ');
+}
+function updateHint() {
+  const raw = $('#fScript').value, h = $('#scriptHint');
+  h.className = 'hint';
+  if (!raw.trim()) { h.textContent = '한 줄에 한 문장씩 넣으면 음성을 분석해 시간을 자동으로 맞춰요.'; return; }
+  const p = parseScript(raw);
+  if (editMode === 'edit' && raw.trim() === initialScript.trim()) { h.textContent = `문장 ${state.segs.length}개 · 스크립트를 바꾸지 않으면 지금 싱크를 그대로 써요.`; return; }
+  h.classList.add('ok');
+  h.textContent = p.timed ? `문장 ${p.segs.length}개 · ${p.kind} 시간 정보를 그대로 사용해요.` : `문장 ${p.texts.length}개 · 음성을 분석해 시간을 자동으로 맞춰요.`;
+}
+function setBusy(on, msg) {
+  $('#edStatus').hidden = !on; $('#edStatusTxt').textContent = msg || '';
+  $('#edSave').disabled = on; $('#edCancel').disabled = on;
+}
+function showErr(msg) { const e = $('#edErr'); e.textContent = msg; e.hidden = false; setBusy(false); }
+function errMessage(e) {
+  const c = e && e.code;
+  if (c === 'too_large' || (e && (e.statusCode === '413' || /exceeded the maximum/i.test(e.message || '')))) return '파일이 너무 커요. 50MB 이하로 올려 주세요.';
+  if (c === 'quota_or_state') return '저장 공간이 가득 찼어요. 쓰지 않는 자료를 삭제한 뒤 다시 시도하세요.';
+  if (c === 'rate_limited') return '요청이 많아요. 잠시 후 다시 시도하세요.';
+  if (c === 'not_granted') return '이 페이지에 자료를 추가할 권한이 없어요.';
+  if (c === 'quota_exceeded') return '저장 한도를 넘었어요. 스크립트가 너무 길면 나눠서 올려 주세요.';
+  if (e && e.name === 'QuotaExceededError') return '브라우저 저장 공간이 부족해요.';
+  return (e && (e.message || c)) || '알 수 없는 오류가 났어요.';
+}
+async function submitEditor(ev) {
+  ev.preventDefault();
+  $('#edErr').hidden = true;
+  const title = $('#fTitle').value.trim();
+  const raw = $('#fScript').value;
+  if (!raw.trim()) return showErr('스크립트를 입력하세요.');
+  const parsed = parseScript(raw);
+  const count = parsed.timed ? parsed.segs.length : parsed.texts.length;
+  if (!count) return showErr('스크립트에서 문장을 찾지 못했어요.');
+  try {
+    if (editMode === 'edit') {
+      const t = state.cur;
+      const fields = { title: title || t.title };
+      if (raw.trim() !== initialScript.trim()) {
+        if (parsed.timed) fields.segments = parsed.segs.map((s) => ({ s: r2(s.s), t: s.t }));
+        else {
+          setBusy(true, '음성을 분석하는 중…');
+          const blob = await getBlob(t);
+          const an = await analyzeAudio(blob);
+          fields.segments = align(parsed.texts, an, an ? an.duration : t.duration);
+        }
+      }
+      setBusy(true, '저장하는 중…');
+      await Store.update(t.id, fields);
+      Object.assign(t, fields);
+      if (fields.segments) { state.segs = fields.segments; renderLines(); }
+      renderHeader(); renderList();
+      closeEditor(); toast('저장했어요.');
+      return;
+    }
+    const file = pickedFile;
+    if (!file) return showErr('음성 파일을 선택하세요.');
+    if (file.type && !/^audio\//.test(file.type) && !/\.(mp3|m4a|wav|aac|ogg)$/i.test(file.name)) return showErr('음성 파일(MP3 등)을 선택하세요.');
+    let segs, duration;
+    if (parsed.timed) {
+      setBusy(true, '음성 길이를 확인하는 중…');
+      duration = await getDuration(file);
+      segs = parsed.segs.map((s) => ({ s: r2(s.s), t: s.t }));
+    } else {
+      setBusy(true, '음성을 분석해 문장 시간을 맞추는 중…');
+      const an = await analyzeAudio(file).catch(() => null);
+      duration = an ? an.duration : await getDuration(file);
+      segs = align(parsed.texts, an, duration);
+    }
+    const meta = { title: title || file.name, segments: segs, duration: r2(duration || 0), size: file.size, createdAt: Date.now() };
+    setBusy(true, '저장하는 중…');
+    const id = await Store.add(meta, file, (i, n) => setBusy(true, n > 1 ? `업로드하는 중… (${i}/${n})` : '업로드하는 중…'));
+    cacheBlob(id, file);
+    closeEditor();
+    if (state.tracks.some((t) => t.id === id)) selectTrack(id); else state.pendingSelect = id;
+    toast('추가했어요. 문장을 눌러 재생해 보세요.');
+  } catch (e) {
+    console.warn(e);
+    showErr(errMessage(e));
+  }
+}
+
+/* ---------- nav (phone drawer) ---------- */
+function openNav() { $('#app').classList.add('nav-open'); $('#scrim').hidden = false; }
+function closeNav() { $('#app').classList.remove('nav-open'); $('#scrim').hidden = true; }
+
+/* ---------- events ---------- */
+$('#btnMenu').addEventListener('click', openNav);
+$('#scrim').addEventListener('click', closeNav);
+$('#btnAdd').addEventListener('click', () => { closeNav(); openEditor('add'); });
+$('#btnAdd2').addEventListener('click', () => openEditor('add'));
+$('#trackList').addEventListener('click', (e) => { const b = e.target.closest('.track'); if (b) selectTrack(b.dataset.id); });
+
+$('#scriptIn').addEventListener('click', (e) => {
+  const act = e.target.closest('[data-act]');
+  if (act) {
+    const i = Number(act.dataset.i), cur = state.draft[i].s;
+    if (act.dataset.act === 'minus') setDraftStart(i, cur - 0.1);
+    else if (act.dataset.act === 'plus') setDraftStart(i, cur + 0.1);
+    else setDraftStart(i, audio.currentTime - 0.1);
+    return;
+  }
+  const line = e.target.closest('.line');
+  if (line) seekLine(Number(line.dataset.i));
+});
+$('#scriptIn').addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('line')) { e.preventDefault(); e.stopPropagation(); seekLine(Number(e.target.dataset.i)); }
+});
+['wheel', 'touchmove'].forEach((ev) => $('#scriptView').addEventListener(ev, () => { state.userScrollAt = Date.now(); }, { passive: true }));
+
+$('#btnPlay').addEventListener('click', togglePlay);
+$('#btnPrev').addEventListener('click', () => stepSeg(-1));
+$('#btnNext').addEventListener('click', () => stepSeg(1));
+$('#btnRepeat').addEventListener('click', () => setToggle('repeat', !state.repeat));
+$('#btnShadow').addEventListener('click', () => setToggle('shadow', !state.shadow));
+$('#gapPill').addEventListener('click', finishGap);
+
+const seek = $('#seek');
+seek.addEventListener('input', () => {
+  state.dragging = true;
+  const d = Number(seek.max) || 1;
+  seek.style.setProperty('--fill', (seek.value / d * 100) + '%');
+  $('#tCur').textContent = fmt(Number(seek.value));
+});
+seek.addEventListener('change', () => {
+  state.dragging = false; stopGap();
+  seekTo(Number(seek.value));
+  state.loopIdx = Math.max(0, idxAt(activeSegs(), Number(seek.value)));
+  state.userScrollAt = 0;
+});
+
+$('#btnRate').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const pop = $('#ratePop'), open = pop.hidden;
+  pop.hidden = !open; $('#btnRate').setAttribute('aria-expanded', String(open));
+});
+document.addEventListener('click', (e) => {
+  const pop = $('#ratePop');
+  if (!pop.hidden && !pop.contains(e.target) && e.target !== $('#btnRate')) { pop.hidden = true; $('#btnRate').setAttribute('aria-expanded', 'false'); }
+});
+$('#rateRange').addEventListener('input', (e) => setRate(Number(e.target.value)));
+$('#rateDown').addEventListener('click', () => setRate(state.rate - 0.05));
+$('#rateUp').addEventListener('click', () => setRate(state.rate + 0.05));
+$('#rateChips').innerHTML = [0.6, 0.75, 0.9, 1, 1.25, 1.5].map((v) => `<button class="chip" type="button" data-v="${v}">${v}×</button>`).join('');
+$('#rateChips').addEventListener('click', (e) => { const c = e.target.closest('.chip'); if (c) setRate(Number(c.dataset.v)); });
+$('#gapChips').innerHTML = [[0.8, '짧게 0.8×'], [1.2, '보통 1.2×'], [1.6, '넉넉히 1.6×'], [2.2, '여유 2.2×']].map(([v, l]) => `<button class="chip" type="button" data-v="${v}">${l}</button>`).join('');
+$('#gapChips').addEventListener('click', (e) => { const c = e.target.closest('.chip'); if (c) setGap(Number(c.dataset.v)); });
+
+$('#btnBlind').addEventListener('click', () => {
+  state.blind = !state.blind;
+  $('#btnBlind').setAttribute('aria-pressed', String(state.blind));
+  $('#scriptIn').classList.toggle('blind', state.blind);
+});
+$('#btnSync').addEventListener('click', () => (state.sync ? exitSync() : enterSync()));
+$('#btnSyncCancel').addEventListener('click', exitSync);
+$('#btnSyncSave').addEventListener('click', saveSync);
+$('#btnTap').addEventListener('click', tapSync);
+$('#btnAuto').addEventListener('click', autoAlign);
+$('#btnEdit').addEventListener('click', () => openEditor('edit'));
+$('#btnDel').addEventListener('click', () => {
+  if (!state.cur) return;
+  $('#cfBody').textContent = `“${state.cur.title}”의 음성과 스크립트가 함께 삭제되고 되돌릴 수 없어요.`;
+  $('#confirm').hidden = false; $('#cfNo').focus();
+});
+$('#cfNo').addEventListener('click', () => { $('#confirm').hidden = true; });
+$('#cfYes').addEventListener('click', async () => {
+  const t = state.cur; $('#confirm').hidden = true;
+  if (!t) return;
+  try {
+    audio.pause();
+    await Store.remove(t);
+    const c = urlCache.get(t.id); if (c) { URL.revokeObjectURL(c.url); urlCache.delete(t.id); }
+    toast('삭제했어요.');
+  } catch (e) { toast('삭제하지 못했어요: ' + errMessage(e)); }
+});
+
+$('#editorForm').addEventListener('submit', submitEditor);
+$('#edCancel').addEventListener('click', closeEditor);
+$('#fFile').addEventListener('change', (e) => setPicked(e.target.files[0] || null));
+$('#fScript').addEventListener('input', () => { clearTimeout(updateHint.t); updateHint.t = setTimeout(updateHint, 200); });
+$('#fScriptFile').addEventListener('change', async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try { $('#fScript').value = await f.text(); updateHint(); } catch (err) { showErr('스크립트 파일을 읽지 못했어요.'); }
+});
+const drop = $('#drop');
+['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('over')));
+drop.addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setPicked(f); });
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.closest('input, textarea, [contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'Escape') {
+    if (!$('#editor').hidden && !$('#edCancel').disabled) closeEditor();
+    else if (!$('#confirm').hidden) $('#confirm').hidden = true;
+    else if (!$('#ratePop').hidden) { $('#ratePop').hidden = true; $('#btnRate').setAttribute('aria-expanded', 'false'); }
+    else closeNav();
+    return;
+  }
+  if (!$('#editor').hidden || !$('#confirm').hidden) return;
+  if (e.code === 'Space') {
+    if (e.target.closest('button')) return;
+    e.preventDefault(); if (state.sync && !audio.paused) tapSync(); else togglePlay();
+  }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); stepSeg(-1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); stepSeg(1); }
+  else if (e.key === 'r' || e.key === 'R') setToggle('repeat', !state.repeat);
+  else if (e.key === 's' || e.key === 'S') setToggle('shadow', !state.shadow);
+  else if (e.key === '[') setRate(state.rate - 0.05);
+  else if (e.key === ']') setRate(state.rate + 0.05);
+});
+window.addEventListener('pagehide', savePos);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !audio.paused) lockScreen(true); });
+
+/* ---------- boot ---------- */
+setRate(state.rate); setGap(state.gapFactor); setToggle('shadow', state.shadow);
+if (!window.matchMedia || !matchMedia('(hover: hover)').matches) $('#keys').hidden = true;
+renderHeader(); renderLines();
+
+/* ---------- auth ---------- */
+let signUpMode = false;
+function showAuth(on) { $('#auth').hidden = !on; }
+function setAuthMode(up) {
+  signUpMode = up;
+  $('#authSubmit').textContent = up ? '회원가입' : '로그인';
+  $('#authSwitchTxt').textContent = up ? '이미 계정이 있나요?' : '처음이신가요?';
+  $('#authSwitch').textContent = up ? '로그인' : '회원가입';
+  $('#aPw').setAttribute('autocomplete', up ? 'new-password' : 'current-password');
+  $('#authErr').hidden = true; $('#authOk').hidden = true;
+}
+function authMsg(e) {
+  const m = (e && e.message) || '';
+  if (/Invalid login credentials/i.test(m)) return '이메일 또는 비밀번호가 맞지 않아요.';
+  if (/Email not confirmed/i.test(m)) return '가입 확인 메일의 링크를 먼저 눌러 주세요.';
+  if (/already registered/i.test(m)) return '이미 가입된 이메일이에요. 로그인해 주세요.';
+  if (/Password should be/i.test(m)) return '비밀번호는 6자 이상이어야 해요.';
+  if (/fetch/i.test(m)) return '서버에 연결하지 못했어요. 인터넷 연결을 확인하세요.';
+  return m || '로그인하지 못했어요.';
+}
+$('#authSwitch').addEventListener('click', () => setAuthMode(!signUpMode));
+$('#authForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const email = $('#aEmail').value.trim(), password = $('#aPw').value;
+  $('#authErr').hidden = true; $('#authOk').hidden = true;
+  if (!email || !password) { $('#authErr').textContent = '이메일과 비밀번호를 입력하세요.'; $('#authErr').hidden = false; return; }
+  const btn = $('#authSubmit'); btn.disabled = true;
+  try {
+    if (signUpMode) {
+      const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname } });
+      if (error) throw error;
+      if (!data.session) { $('#authOk').textContent = '확인 메일을 보냈어요. 메일의 링크를 누른 뒤 로그인하세요.'; $('#authOk').hidden = false; setAuthMode(false); $('#authOk').hidden = false; }
+    } else {
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+    }
+  } catch (e) { $('#authErr').textContent = authMsg(e); $('#authErr').hidden = false; }
+  finally { btn.disabled = false; }
+});
+$('#btnLogout').addEventListener('click', async () => {
+  audio.pause();
+  try { await sb.auth.signOut(); } catch (e) {}
+});
+
+let currentUid; // undefined until the first auth check, so a signed-out start still shows the login screen
+async function startFor(session) {
+  const uid = session && session.user ? session.user.id : null;
+  if (uid === currentUid) return;
+  currentUid = uid;
+  if (!uid) {
+    Store = null; state.tracks = []; state.cur = null; state.segs = [];
+    audio.removeAttribute('src'); audio.load(); $('#btnPlay').disabled = true;
+    renderHeader(); renderList(); renderLines();
+    showAuth(true); setAuthMode(false);
+    return;
+  }
+  showAuth(false);
+  $('#whoEmail').textContent = session.user.email || '';
+  Store = SupaStore;
+  await SupaStore.init(onTracks, uid);
+  renderHeader(); renderList(); renderLines();
+}
+async function boot() {
+  if (!sb) {
+    showAuth(true);
+    $('#authForm').innerHTML = '<img src="icons/icon-192.png" alt=""><h1>쉐도잉 플레이어</h1><p>' + (configured ? '로그인 모듈을 불러오지 못했어요. 인터넷 연결을 확인하고 다시 열어 주세요.' : '<b>config.js</b>에 Supabase 주소(URL)와 anon key를 넣어야 시작할 수 있어요. 저장소의 README를 참고하세요.') + '</p>';
+    return;
+  }
+  sb.auth.onAuthStateChange((_ev, session) => { setTimeout(() => startFor(session), 0); });
+  const { data } = await sb.auth.getSession();
+  await startFor(data.session);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Store) Store.refresh(); });
+  window.addEventListener('online', () => { if (Store) Store.refresh(); });
+}
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+boot();
+})();
+</script>
+</body>
+</html>
