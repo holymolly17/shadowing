@@ -1,6 +1,6 @@
-import { json, setupError, sameSecret, tokenFor } from './_lib.js';
+import { json, setupError, sameSecret, tokenFor, safe } from './_lib.js';
 
-export async function POST(request) {
+export const POST = safe(async (request) => {
   const err = setupError();
   if (err) return json({ error: err }, 500);
   let body = {};
@@ -11,4 +11,4 @@ export async function POST(request) {
     return json({ error: '비밀번호가 맞지 않아요.' }, 401);
   }
   return json({ token: tokenFor(password) });
-}
+});

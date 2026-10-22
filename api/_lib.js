@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { put, get } from '@vercel/blob';
 
 export const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -48,3 +49,40 @@ export function guard(request) {
   if (!isAuthed(request)) return json({ error: '다시 로그인해 주세요.' }, 401);
   return null;
 }
+
+// Blob stores are either public or private, and the dashboard does not always say which.
+// Try public first, remember what worked, and fall back to private.
+let accessMode = process.env.BLOB_ACCESS || null;
+export async function putBlob(pathname, body, contentType) {
+  const order = accessMode ? [accessMode] : ['public', 'private'];
+  let lastErr;
+  for (const access of order) {
+    try {
+      const blob = await put(pathname, body, { access, addRandomSuffix: true, contentType });
+      accessMode = access;
+      return blob;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
+
+export const accessOf = (u) => (new URL(u).hostname.includes('.private.') ? 'private' : 'public');
+
+// Reads go through the SDK so private stores work too. Returns a Response or null.
+export async function readBlob(u) {
+  const r = await get(u, { access: accessOf(u) });
+  if (!r || r.statusCode !== 200 || !r.stream) return null;
+  return new Response(r.stream);
+}
+
+// Turn any thrown error into a JSON message the page can show.
+export const safe = (fn) => async (request) => {
+  try {
+    return await fn(request);
+  } catch (e) {
+    console.error(e);
+    return json({ error: '서버 오류: ' + ((e && e.message) || String(e)) }, 500);
+  }
+};

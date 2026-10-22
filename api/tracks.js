@@ -1,5 +1,5 @@
-import { put, list, del } from '@vercel/blob';
-import { guard, json, validId, isBlobUrl } from './_lib.js';
+import { list, del } from '@vercel/blob';
+import { guard, json, validId, isBlobUrl, putBlob, readBlob, safe } from './_lib.js';
 
 // Each track is one JSON blob at tracks/<id>-<random>.json; saving writes a new one and removes the old.
 async function listAll(prefix) {
@@ -13,7 +13,7 @@ async function listAll(prefix) {
   return out;
 }
 
-export async function GET(request) {
+export const GET = safe(async (request) => {
   const denied = guard(request);
   if (denied) return denied;
   const blobs = await listAll('tracks/');
@@ -26,17 +26,17 @@ export async function GET(request) {
   }
   const tracks = (await Promise.all([...latest.values()].map(async (b) => {
     try {
-      const res = await fetch(b.url, { cache: 'no-store' });
-      return res.ok ? await res.json() : null;
+      const res = await readBlob(b.url);
+      return res ? await res.json() : null;
     } catch (e) {
       return null;
     }
   }))).filter(Boolean);
   tracks.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   return json({ tracks });
-}
+});
 
-export async function POST(request) {
+export const POST = safe(async (request) => {
   const denied = guard(request);
   if (denied) return denied;
   let t;
@@ -55,17 +55,13 @@ export async function POST(request) {
     createdAt: Number(t.createdAt) || Date.now(),
     updatedAt: Date.now(),
   };
-  const saved = await put(`tracks/${rec.id}.json`, JSON.stringify(rec), {
-    access: 'public',
-    addRandomSuffix: true,
-    contentType: 'application/json',
-  });
+  const saved = await putBlob(`tracks/${rec.id}.json`, JSON.stringify(rec), 'application/json');
   const old = (await listAll(`tracks/${rec.id}-`)).filter((b) => b.url !== saved.url).map((b) => b.url);
   if (old.length) await del(old);
   return json({ track: rec });
-}
+});
 
-export async function DELETE(request) {
+export const DELETE = safe(async (request) => {
   const denied = guard(request);
   if (denied) return denied;
   const id = new URL(request.url).searchParams.get('id');
@@ -73,4 +69,4 @@ export async function DELETE(request) {
   const urls = [...(await listAll(`tracks/${id}-`)), ...(await listAll(`audio/${id}/`))].map((b) => b.url);
   if (urls.length) await del(urls);
   return json({ deleted: urls.length });
-}
+});

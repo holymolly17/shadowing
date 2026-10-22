@@ -735,7 +735,7 @@ const BlobStore = {
     try {
       for (const url of t.parts || []) {
         let res = null;
-        try { res = await fetch(url); } catch (e) { res = null; }
+        if (!/\.private\./.test(url)) { try { res = await fetch(url); } catch (e) { res = null; } }
         if (!res || !res.ok) res = await fetch('/api/audio?u=' + encodeURIComponent(url), { headers: { Authorization: 'Bearer ' + token } });
         if (!res.ok) throw new Error();
         chunks.push(await res.arrayBuffer());
