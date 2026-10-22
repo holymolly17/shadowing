@@ -447,21 +447,16 @@ Let's start with a quick update from each team.
   <form class="auth-card" id="authForm" novalidate>
     <img src="icons/icon-192.png" alt="">
     <h1>쉐도잉 플레이어</h1>
-    <p id="authLead">로그인하면 PC와 휴대폰에서 같은 자료로 이어서 연습할 수 있어요.</p>
-    <div class="field"><label for="aEmail">이메일</label><input type="text" inputmode="email" autocomplete="email" id="aEmail"></div>
+    <p>비밀번호를 입력하면 PC와 휴대폰에서 같은 자료로 이어서 연습할 수 있어요.</p>
     <div class="field"><label for="aPw">비밀번호</label><input type="password" autocomplete="current-password" id="aPw" style="width:100%;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px 12px;font-size:16px"></div>
     <div class="hint err" id="authErr" hidden></div>
-    <div class="hint ok" id="authOk" hidden></div>
-    <button class="btn primary" type="submit" id="authSubmit">로그인</button>
-    <div class="auth-switch"><span id="authSwitchTxt">처음이신가요?</span> <button type="button" id="authSwitch">회원가입</button></div>
+    <button class="btn primary" type="submit" id="authSubmit">시작하기</button>
   </form>
 </div>
 
 <div class="toast" id="toast" role="status" hidden></div>
 <audio id="audio" preload="auto" playsinline></audio>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="config.js"></script>
 <script>
 (() => {
 const $ = (s) => document.querySelector(s);
@@ -580,8 +575,10 @@ function align(texts, an, duration) {
   if (!N) return [];
   if (!an || !an.db || an.db.length < 10) return proportional(texts, 0, duration || N * 3);
   const { db, hop } = an, F = db.length;
-  const sorted = Float32Array.from(db).sort();
-  const lo = sorted[Math.floor(F * 0.1)], hi = sorted[Math.floor(F * 0.95)];
+  // Ignore digital silence (padding) when measuring the noise floor, or long silent tails skew the threshold.
+  let live = Float32Array.from(db.filter((v) => v > -90)).sort();
+  if (live.length < 10) live = Float32Array.from(db).sort();
+  const lo = live[Math.floor(live.length * 0.1)], hi = live[Math.floor(live.length * 0.98)];
   const thr = lo + (hi - lo) * 0.35;
   const sil = new Uint8Array(F);
   for (let i = 0; i < F; i++) sil[i] = db[i] < thr ? 1 : 0;
@@ -646,10 +643,17 @@ function getDuration(blob) {
   });
 }
 
-/* ---------- storage: Supabase (sync) + on-device audio cache (offline) ---------- */
-const CFG = window.SHADOWING_CONFIG || {};
-const configured = !!(CFG.supabaseUrl && CFG.supabaseAnonKey && !/YOUR_/.test(CFG.supabaseUrl + CFG.supabaseAnonKey));
-const sb = configured && window.supabase ? window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }) : null;
+/* ---------- storage: Vercel Blob via /api (sync) + on-device audio cache (offline) ---------- */
+let token = LS.get('token', null);
+async function api(path, opts = {}) {
+  const res = await fetch(path, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + token } });
+  let body = null;
+  try { body = await res.json(); } catch (e) {}
+  if (res.status === 401) { signOut(); throw new Error('다시 로그인해 주세요.'); }
+  if (!res.ok) throw new Error((body && body.error) || '서버 오류가 났어요 (' + res.status + ').');
+  return body;
+}
+const PART = 4 * 1024 * 1024; // per-request upload size (Vercel functions accept bodies up to 4.5 MB)
 const IDB = {
   db: null,
   open() {
@@ -677,58 +681,70 @@ const AudioCache = {
   async del(id) { try { await IDB.run('readwrite', (s) => s.delete(id)); } catch (e) {} },
   async keys() { try { return (await IDB.run('readonly', (s) => s.getAllKeys())) || []; } catch (e) { return []; } },
 };
-const rowToTrack = (r) => ({ id: r.id, title: r.title, segments: r.segments || [], duration: r.duration || 0, audioPath: r.audio_path, audioType: r.audio_type, size: r.size, createdAt: Date.parse(r.created_at) || 0 });
-const SupaStore = {
+const BlobStore = {
   canWrite: true,
-  async init(onChange, uid) { this.onChange = onChange; this.uid = uid; await this.refresh(); },
+  async init(onChange) { this.onChange = onChange; await this.refresh(); },
   async refresh() {
     let list;
-    const { data, error } = await sb.from('tracks').select('*').order('created_at', { ascending: false });
-    if (error) {
-      list = LS.get('list:' + this.uid, []);
+    try {
+      list = (await api('/api/tracks')).tracks || [];
+      LS.set('list', list);
+      setNote('PC와 휴대폰에서 같은 비밀번호로 들어오면 자료가 함께 보여요.', false);
+    } catch (e) {
+      if (!token) return;
+      list = LS.get('list', []);
       setNote(navigator.onLine ? '서버에 연결하지 못했어요. 저장해 둔 목록을 보여드려요.' : '오프라인이에요. 이 기기에 받아 둔 자료만 재생할 수 있어요.', true);
-    } else {
-      list = data.map(rowToTrack);
-      LS.set('list:' + this.uid, list);
-      setNote('PC와 휴대폰에서 같은 계정으로 로그인하면 자료가 함께 보여요.', false);
     }
     this.cached = new Set(await AudioCache.keys());
     this.onChange(list);
   },
   async add(meta, file, onProgress) {
-    const id = (crypto.randomUUID && crypto.randomUUID()) || newId();
-    const ext = ((file.name.match(/\.([a-z0-9]+)$/i) || [])[1] || 'mp3').toLowerCase();
-    const path = `${this.uid}/${id}.${ext}`;
-    onProgress && onProgress(1, 1);
-    const up = await sb.storage.from('audio').upload(path, file, { contentType: file.type || 'audio/mpeg', upsert: false });
-    if (up.error) throw up.error;
-    const { error } = await sb.from('tracks').insert({ id, user_id: this.uid, title: meta.title, segments: meta.segments, duration: meta.duration, audio_path: path, audio_type: file.type || 'audio/mpeg', size: file.size });
-    if (error) { await sb.storage.from('audio').remove([path]); throw error; }
+    const id = newId().replace(/[^a-z0-9]/g, '');
+    const n = Math.max(1, Math.ceil(file.size / PART)), parts = [];
+    try {
+      for (let i = 0; i < n; i++) {
+        onProgress && onProgress(i + 1, n);
+        const r = await api(`/api/upload?id=${id}&part=${i}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file.slice(i * PART, (i + 1) * PART) });
+        parts.push(r.url);
+      }
+      await api('/api/tracks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...meta, id, audioType: file.type || 'audio/mpeg', parts }) });
+    } catch (e) {
+      try { await api('/api/tracks?id=' + id, { method: 'DELETE' }); } catch (_) {}
+      throw e;
+    }
     await AudioCache.put(id, file);
     await this.refresh();
     return id;
   },
   async update(id, fields) {
-    const row = {};
-    if (fields.title != null) row.title = fields.title;
-    if (fields.segments) row.segments = fields.segments;
-    const { error } = await sb.from('tracks').update(row).eq('id', id);
-    if (error) throw error;
+    const t = state.tracks.find((x) => x.id === id);
+    if (!t) throw new Error('자료를 찾지 못했어요.');
+    const rec = { ...t, ...fields };
+    await api('/api/tracks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rec) });
     await this.refresh();
   },
   async remove(t) {
-    const { error } = await sb.from('tracks').delete().eq('id', t.id);
-    if (error) throw error;
-    await sb.storage.from('audio').remove([t.audioPath]);
+    await api('/api/tracks?id=' + encodeURIComponent(t.id), { method: 'DELETE' });
     await AudioCache.del(t.id);
     await this.refresh();
   },
   async audioBlob(t) {
     const c = await AudioCache.get(t.id);
     if (c) return c;
-    const { data, error } = await sb.storage.from('audio').download(t.audioPath);
-    if (error) throw new Error(navigator.onLine ? '음성 파일을 받지 못했어요.' : '오프라인이라 아직 받지 않은 음성은 재생할 수 없어요.');
-    const blob = new Blob([data], { type: t.audioType || 'audio/mpeg' });
+    const chunks = [];
+    try {
+      for (const url of t.parts || []) {
+        let res = null;
+        try { res = await fetch(url); } catch (e) { res = null; }
+        if (!res || !res.ok) res = await fetch('/api/audio?u=' + encodeURIComponent(url), { headers: { Authorization: 'Bearer ' + token } });
+        if (!res.ok) throw new Error();
+        chunks.push(await res.arrayBuffer());
+      }
+    } catch (e) {
+      throw new Error(navigator.onLine ? '음성 파일을 받지 못했어요.' : '오프라인이라 아직 받지 않은 음성은 재생할 수 없어요.');
+    }
+    if (!chunks.length) throw new Error('음성 파일이 없어요.');
+    const blob = new Blob(chunks, { type: t.audioType || 'audio/mpeg' });
     await AudioCache.put(t.id, blob);
     if (this.cached) this.cached.add(t.id);
     return blob;
@@ -1164,7 +1180,7 @@ function setBusy(on, msg) {
 function showErr(msg) { const e = $('#edErr'); e.textContent = msg; e.hidden = false; setBusy(false); }
 function errMessage(e) {
   const c = e && e.code;
-  if (c === 'too_large' || (e && (e.statusCode === '413' || /exceeded the maximum/i.test(e.message || '')))) return '파일이 너무 커요. 50MB 이하로 올려 주세요.';
+  if (c === 'too_large') return '파일이 너무 커요.';
   if (c === 'quota_or_state') return '저장 공간이 가득 찼어요. 쓰지 않는 자료를 삭제한 뒤 다시 시도하세요.';
   if (c === 'rate_limited') return '요청이 많아요. 잠시 후 다시 시도하세요.';
   if (c === 'not_granted') return '이 페이지에 자료를 추가할 권한이 없어요.';
@@ -1366,78 +1382,47 @@ if (!window.matchMedia || !matchMedia('(hover: hover)').matches) $('#keys').hidd
 renderHeader(); renderLines();
 
 /* ---------- auth ---------- */
-let signUpMode = false;
-function showAuth(on) { $('#auth').hidden = !on; }
-function setAuthMode(up) {
-  signUpMode = up;
-  $('#authSubmit').textContent = up ? '회원가입' : '로그인';
-  $('#authSwitchTxt').textContent = up ? '이미 계정이 있나요?' : '처음이신가요?';
-  $('#authSwitch').textContent = up ? '로그인' : '회원가입';
-  $('#aPw').setAttribute('autocomplete', up ? 'new-password' : 'current-password');
-  $('#authErr').hidden = true; $('#authOk').hidden = true;
-}
-function authMsg(e) {
-  const m = (e && e.message) || '';
-  if (/Invalid login credentials/i.test(m)) return '이메일 또는 비밀번호가 맞지 않아요.';
-  if (/Email not confirmed/i.test(m)) return '가입 확인 메일의 링크를 먼저 눌러 주세요.';
-  if (/already registered/i.test(m)) return '이미 가입된 이메일이에요. 로그인해 주세요.';
-  if (/Password should be/i.test(m)) return '비밀번호는 6자 이상이어야 해요.';
-  if (/fetch/i.test(m)) return '서버에 연결하지 못했어요. 인터넷 연결을 확인하세요.';
-  return m || '로그인하지 못했어요.';
-}
-$('#authSwitch').addEventListener('click', () => setAuthMode(!signUpMode));
+function showAuth(on) { $('#auth').hidden = !on; if (on) setTimeout(() => $('#aPw').focus({ preventScroll: true }), 30); }
 $('#authForm').addEventListener('submit', async (ev) => {
   ev.preventDefault();
-  const email = $('#aEmail').value.trim(), password = $('#aPw').value;
-  $('#authErr').hidden = true; $('#authOk').hidden = true;
-  if (!email || !password) { $('#authErr').textContent = '이메일과 비밀번호를 입력하세요.'; $('#authErr').hidden = false; return; }
+  const password = $('#aPw').value;
+  $('#authErr').hidden = true;
+  if (!password) { $('#authErr').textContent = '비밀번호를 입력하세요.'; $('#authErr').hidden = false; return; }
   const btn = $('#authSubmit'); btn.disabled = true;
   try {
-    if (signUpMode) {
-      const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname } });
-      if (error) throw error;
-      if (!data.session) { $('#authOk').textContent = '확인 메일을 보냈어요. 메일의 링크를 누른 뒤 로그인하세요.'; $('#authOk').hidden = false; setAuthMode(false); $('#authOk').hidden = false; }
-    } else {
-      const { error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-    }
-  } catch (e) { $('#authErr').textContent = authMsg(e); $('#authErr').hidden = false; }
-  finally { btn.disabled = false; }
+    const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+    let body = null; try { body = await res.json(); } catch (e) {}
+    if (!res.ok) throw new Error((body && body.error) || '로그인하지 못했어요 (' + res.status + ').');
+    token = body.token; LS.set('token', token);
+    $('#aPw').value = '';
+    await start();
+  } catch (e) {
+    $('#authErr').textContent = /fetch/i.test(e.message) ? '서버에 연결하지 못했어요. 인터넷 연결을 확인하세요.' : e.message;
+    $('#authErr').hidden = false;
+  } finally { btn.disabled = false; }
 });
-$('#btnLogout').addEventListener('click', async () => {
+function signOut() {
+  token = null; LS.set('token', null);
   audio.pause();
-  try { await sb.auth.signOut(); } catch (e) {}
-});
+  Store = null; state.tracks = []; state.cur = null; state.segs = [];
+  audio.removeAttribute('src'); audio.load(); $('#btnPlay').disabled = true;
+  renderHeader(); renderList(); renderLines();
+  showAuth(true);
+}
+$('#btnLogout').addEventListener('click', signOut);
+$('#whoEmail').textContent = '내 자료';
 
-let currentUid; // undefined until the first auth check, so a signed-out start still shows the login screen
-async function startFor(session) {
-  const uid = session && session.user ? session.user.id : null;
-  if (uid === currentUid) return;
-  currentUid = uid;
-  if (!uid) {
-    Store = null; state.tracks = []; state.cur = null; state.segs = [];
-    audio.removeAttribute('src'); audio.load(); $('#btnPlay').disabled = true;
-    renderHeader(); renderList(); renderLines();
-    showAuth(true); setAuthMode(false);
-    return;
-  }
+async function start() {
   showAuth(false);
-  $('#whoEmail').textContent = session.user.email || '';
-  Store = SupaStore;
-  await SupaStore.init(onTracks, uid);
+  Store = BlobStore;
+  await BlobStore.init(onTracks);
   renderHeader(); renderList(); renderLines();
 }
 async function boot() {
-  if (!sb) {
-    showAuth(true);
-    $('#authForm').innerHTML = '<img src="icons/icon-192.png" alt=""><h1>쉐도잉 플레이어</h1><p>' + (configured ? '로그인 모듈을 불러오지 못했어요. 인터넷 연결을 확인하고 다시 열어 주세요.' : '<b>config.js</b>에 Supabase 주소(URL)와 anon key를 넣어야 시작할 수 있어요. 저장소의 README를 참고하세요.') + '</p>';
-    return;
-  }
-  sb.auth.onAuthStateChange((_ev, session) => { setTimeout(() => startFor(session), 0); });
-  const { data } = await sb.auth.getSession();
-  await startFor(data.session);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Store) Store.refresh(); });
   window.addEventListener('online', () => { if (Store) Store.refresh(); });
+  if (!token) { showAuth(true); return; }
+  await start();
 }
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
