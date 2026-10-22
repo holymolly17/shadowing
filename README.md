@@ -17,7 +17,7 @@ MP3와 스크립트를 올리면 음성에 맞춰 문장이 하이라이트되�
 ## 처음 설정 (한 번만)
 
 1. Vercel 프로젝트 → **Storage** → **Create Database** → **Blob** → 이 프로젝트에 연결(Connect).
-   `BLOB_READ_WRITE_TOKEN` 환경 변수가 자동으로 추가됩니다.
+   `BLOB_STORE_ID`(또는 `BLOB_READ_WRITE_TOKEN`) 환경 변수가 자동으로 추가됩니다.
 2. Vercel 프로젝트 → **Settings → Environment Variables**에 `APP_PASSWORD`(앱 비밀번호)를 추가.
 3. **Deployments**에서 최신 배포의 **⋯ → Redeploy**. (환경 변수는 다시 배포해야 적용됩니다.)
 

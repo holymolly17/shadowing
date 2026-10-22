@@ -8,7 +8,8 @@ export const json = (data, status = 200) =>
 
 export function setupError() {
   if (!process.env.APP_PASSWORD) return 'Vercel 환경 변수 APP_PASSWORD가 설정되지 않았어요.';
-  if (!process.env.BLOB_READ_WRITE_TOKEN) return 'Vercel Blob 저장소가 이 프로젝트에 연결되지 않았어요.';
+  // Newer Blob stores connect with BLOB_STORE_ID (OIDC); older ones with BLOB_READ_WRITE_TOKEN.
+  if (!process.env.BLOB_STORE_ID && !process.env.BLOB_READ_WRITE_TOKEN) return 'Vercel Blob 저장소가 이 프로젝트에 연결되지 않았어요.';
   return null;
 }
 
