@@ -54,7 +54,7 @@ export const POST = safe(async (request) => {
     parts: t.parts,
     source: t.source === 'ai' ? 'ai' : 'file',
     voice: typeof t.voice === 'string' ? t.voice.slice(0, 40) : undefined,
-    pause: Number(t.pause) || undefined,
+    style: typeof t.style === 'string' ? t.style.slice(0, 20) : undefined,
     createdAt: Number(t.createdAt) || Date.now(),
     updatedAt: Date.now(),
   };

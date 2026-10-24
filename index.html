@@ -449,8 +449,9 @@ Let's start with a quick update from each team.
     <div class="field" id="aiField" hidden>
       <span class="lbl">목소리 <span class="hint">미국 영어 · 20대 여성 · 쾌활하고 차분한 톤</span></span>
       <div class="voice-list" id="voiceList" role="radiogroup" aria-label="목소리"></div>
-      <span class="lbl" style="margin-top:6px">문장 사이 쉬는 시간</span>
-      <div class="chips" id="pauseChips"></div>
+      <span class="lbl" style="margin-top:6px">말투</span>
+      <div class="chips" id="styleChips"></div>
+      <span class="hint">여러 문장을 이어서 읽어 억양과 쉬는 타이밍이 문맥에 맞게 자연스러워요.</span>
     </div>
     <div class="field" id="fileField">
       <span class="lbl">음성 파일</span>
@@ -1284,11 +1285,11 @@ const VOICES = [
   { id: 'shimmer', name: 'Shimmer', note: '부드럽고 차분한 톤' },
   { id: 'sage', name: 'Sage', note: '따뜻하고 안정적인 톤' },
 ];
-const PAUSES = [[0.4, '짧게'], [0.7, '보통'], [1.2, '길게']];
+const STYLES = [['talk', '자연스러운 대화'], ['present', '발표·설명'], ['story', '이야기 들려주기']];
 const TTS_RATE = 24000; // OpenAI "pcm" output: 24 kHz, 16-bit, mono
-let edSource = 'file', voice = LS.get('voice', 'marin'), ttsPause = LS.get('ttsPause', 0.7);
-async function ttsPcm(text, v) {
-  const res = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ text, voice: v }) });
+let edSource = 'file', voice = LS.get('voice', 'marin'), ttsStyle = LS.get('ttsStyle', 'talk');
+async function ttsPcm(text, v, style) {
+  const res = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ text, voice: v, style }) });
   if (res.status === 401) { signOut(); throw new Error('다시 로그인해 주세요.'); }
   if (!res.ok) { let m = null; try { m = (await res.json()).error; } catch (e) {} throw new Error(m || 'AI 음성을 만들지 못했어요 (' + res.status + ').'); }
   const buf = await res.arrayBuffer();
@@ -1305,24 +1306,44 @@ function pcmToWav(chunks) {
   return new Blob([h, ...chunks], { type: 'audio/wav' });
 }
 const silence = (sec) => new Int16Array(Math.round(sec * TTS_RATE));
-// Read each sentence separately, then join them with pauses so every sentence's start time is exact.
-async function synthesize(texts, v, pause, onProgress) {
-  const out = new Array(texts.length);
+// Group sentences into passages so the voice keeps natural intonation and pauses across sentences.
+function passages(texts, maxChars = 700) {
+  const out = []; let cur = [], len = 0;
+  texts.forEach((t, i) => {
+    if (cur.length && len + t.length > maxChars) { out.push(cur); cur = []; len = 0; }
+    cur.push(i); len += t.length + 1;
+  });
+  if (cur.length) out.push(cur);
+  return out;
+}
+function analyzePcm(pcm) {
+  const hopN = Math.round(TTS_RATE * 0.02), F = Math.floor(pcm.length / hopN), db = new Float32Array(F);
+  for (let f = 0; f < F; f++) {
+    let s = 0; const o = f * hopN;
+    for (let k = 0; k < hopN; k++) { const x = pcm[o + k] / 32768; s += x * x; }
+    db[f] = 10 * Math.log10(s / hopN + 1e-10);
+  }
+  return { db, hop: hopN / TTS_RATE, duration: pcm.length / TTS_RATE };
+}
+// Read passage by passage, then find where each sentence starts inside the audio the voice produced.
+async function synthesize(texts, v, style, onProgress) {
+  const groups = passages(texts), out = new Array(groups.length);
   let next = 0, done = 0;
   const worker = async () => {
-    while (next < texts.length) {
-      const i = next++;
-      out[i] = await ttsPcm(texts[i], v);
-      onProgress && onProgress(++done, texts.length);
+    while (next < groups.length) {
+      const g = next++;
+      out[g] = await ttsPcm(groups[g].map((i) => texts[i]).join(' '), v, style);
+      onProgress && onProgress(++done, groups.length);
     }
   };
   await Promise.all([worker(), worker(), worker()]);
-  const chunks = [silence(0.3)], segs = [];
-  let t = 0.3;
-  texts.forEach((text, i) => {
-    segs.push({ s: r2(Math.max(0, t - 0.05)), t: text });
-    chunks.push(out[i]); t += out[i].length / TTS_RATE;
-    const gap = i < texts.length - 1 ? pause : 0.6;
+  const chunks = [silence(0.2)], segs = [];
+  let t = 0.2;
+  groups.forEach((g, gi) => {
+    const pcm = out[gi], gTexts = g.map((i) => texts[i]);
+    align(gTexts, analyzePcm(pcm), pcm.length / TTS_RATE).forEach((x) => segs.push({ s: r2(t + x.s), t: x.t }));
+    chunks.push(pcm); t += pcm.length / TTS_RATE;
+    const gap = gi < groups.length - 1 ? 0.35 : 0.6;
     chunks.push(silence(gap)); t += gap;
   });
   return { blob: pcmToWav(chunks), segs, duration: r2(t) };
@@ -1333,11 +1354,12 @@ async function previewVoice(v, btn) {
   try {
     if (previewAudio) previewAudio.pause();
     btn.disabled = true;
-    let url = previewCache.get(v);
+    const key = v + ':' + ttsStyle;
+    let url = previewCache.get(key);
     if (!url) {
-      const pcm = await ttsPcm("Hi! I'm so glad you're here. Let's practice speaking English together, one sentence at a time.", v);
+      const pcm = await ttsPcm("Hey, I'm so glad you made it! Honestly, I wasn't sure you'd have time today. So, how's everything going with the new project?", v, ttsStyle);
       url = URL.createObjectURL(pcmToWav([pcm]));
-      previewCache.set(v, url);
+      previewCache.set(key, url);
     }
     previewAudio = new Audio(url); previewAudio.play();
   } catch (e) { showErr(e.message); }
@@ -1347,7 +1369,7 @@ function renderVoices() {
   $('#voiceList').innerHTML = VOICES.map((x) => `<div class="voice" role="radio" aria-checked="${x.id === voice}" data-voice="${x.id}">
     <span class="v-txt" data-pickvoice="${x.id}"><b>${x.name}</b><small>${x.note}</small></span>
     <button class="v-play" type="button" data-preview="${x.id}" aria-label="${x.name} 미리 듣기"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.5v9l7.5-4.5z" fill="currentColor"/></svg></button></div>`).join('');
-  $('#pauseChips').innerHTML = PAUSES.map(([v, l]) => `<button class="chip" type="button" data-v="${v}" aria-pressed="${v === ttsPause}">${l} ${v}초</button>`).join('');
+  $('#styleChips').innerHTML = STYLES.map(([v, l]) => `<button class="chip" type="button" data-v="${v}" aria-pressed="${v === ttsStyle}">${l}</button>`).join('');
 }
 function setSource(src) {
   edSource = src;
@@ -1402,7 +1424,7 @@ function updateHint() {
     const texts = p.timed ? p.segs.map((x) => x.t) : p.texts;
     const words = texts.join(' ').split(/\s+/).filter(Boolean).length;
     h.className = 'hint ok';
-    h.textContent = `문장 ${texts.length}개 · AI가 읽으면 약 ${Math.max(1, Math.round(words / 150 + texts.length * ttsPause / 60))}분 길이예요.` + (editMode === 'edit' ? ' 저장하면 음성을 새로 만들어요.' : '');
+    h.textContent = `문장 ${texts.length}개 · AI가 읽으면 약 ${Math.max(1, Math.round(words / 150))}분 길이예요.` + (editMode === 'edit' ? ' 저장하면 음성을 새로 만들어요.' : '');
     return;
   }
   if (editMode === 'edit' && raw.trim() === initialScript.trim()) { h.textContent = `문장 ${state.segs.length}개 · 스크립트를 바꾸지 않으면 지금 싱크를 그대로 써요.`; return; }
@@ -1440,9 +1462,10 @@ async function submitEditor(ev) {
       if (raw.trim() !== initialScript.trim() && t.source === 'ai') {
         const texts = parsed.timed ? parsed.segs.map((x) => x.t) : parsed.texts;
         const v = t.voice || voice;
-        const gen = await synthesize(texts, v, t.pause || ttsPause, (i, n) => setBusy(true, `AI 음성을 만드는 중… (${i}/${n})`));
+        const st = t.style || ttsStyle;
+        const gen = await synthesize(texts, v, st, (i, n) => setBusy(true, `AI 음성을 만드는 중… (${i}/${n})`));
         setBusy(true, '저장하는 중…');
-        const meta = { title: fields.title, segments: gen.segs, duration: gen.duration, size: gen.blob.size, createdAt: t.createdAt || Date.now(), source: 'ai', voice: v, pause: t.pause || ttsPause };
+        const meta = { title: fields.title, segments: gen.segs, duration: gen.duration, size: gen.blob.size, createdAt: t.createdAt || Date.now(), source: 'ai', voice: v, style: st };
         const id = await Store.add(meta, gen.blob, (i, n) => setBusy(true, `업로드하는 중… (${i}/${n})`));
         cacheBlob(id, gen.blob);
         await Store.remove(t);
@@ -1471,8 +1494,8 @@ async function submitEditor(ev) {
     if (edSource === 'ai') {
       const texts = parsed.timed ? parsed.segs.map((x) => x.t) : parsed.texts;
       if (texts.length > 400) return showErr('문장이 너무 많아요. 400문장 이하로 나눠서 만들어 주세요.');
-      const gen = await synthesize(texts, voice, ttsPause, (i, n) => setBusy(true, `AI 음성을 만드는 중… (${i}/${n})`));
-      const meta = { title: title || texts[0].slice(0, 60), segments: gen.segs, duration: gen.duration, size: gen.blob.size, createdAt: Date.now(), source: 'ai', voice, pause: ttsPause };
+      const gen = await synthesize(texts, voice, ttsStyle, (i, n) => setBusy(true, `AI 음성을 만드는 중… (${i}/${n})`));
+      const meta = { title: title || texts[0].slice(0, 60), segments: gen.segs, duration: gen.duration, size: gen.blob.size, createdAt: Date.now(), source: 'ai', voice, style: ttsStyle };
       setBusy(true, '저장하는 중…');
       const id = await Store.add(meta, gen.blob, (i, n) => setBusy(true, n > 1 ? `업로드하는 중… (${i}/${n})` : '업로드하는 중…'));
       cacheBlob(id, gen.blob);
@@ -1645,9 +1668,9 @@ $('#voiceList').addEventListener('click', (e) => {
   const card = e.target.closest('[data-voice]');
   if (card) { voice = card.dataset.voice; LS.set('voice', voice); renderVoices(); }
 });
-$('#pauseChips').addEventListener('click', (e) => {
+$('#styleChips').addEventListener('click', (e) => {
   const c = e.target.closest('.chip');
-  if (c) { ttsPause = Number(c.dataset.v); LS.set('ttsPause', ttsPause); renderVoices(); updateHint(); }
+  if (c) { ttsStyle = c.dataset.v; LS.set('ttsStyle', ttsStyle); renderVoices(); }
 });
 $('#edCancel').addEventListener('click', () => { if (previewAudio) previewAudio.pause(); closeEditor(); });
 $('#fFile').addEventListener('change', (e) => setPicked(e.target.files[0] || null));
