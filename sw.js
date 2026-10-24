@@ -1,6 +1,6 @@
 // App shell cache so the installed app opens offline.
 // API calls and blob downloads are never cached here; audio is cached in IndexedDB by the page.
-const CACHE = 'shadowing-v2';
+const CACHE = 'shadowing-v3';
 const SHELL = [
   './',
   './index.html',
@@ -8,6 +8,8 @@ const SHELL = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
+  './fonts/IM_Hyemin-Regular.woff2',
+  './fonts/IM_Hyemin-Bold.woff2',
 ];
 
 self.addEventListener('install', (e) => {

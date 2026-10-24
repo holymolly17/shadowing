@@ -13,10 +13,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="쉐도잉">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Noto+Serif+KR:wght@400;500&display=swap">
 <style>
+@font-face { font-family: "IM Hyemin"; src: url("fonts/IM_Hyemin-Regular.woff2") format("woff2"); font-weight: 100 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "IM Hyemin"; src: url("fonts/IM_Hyemin-Bold.woff2") format("woff2"); font-weight: 600 900; font-style: normal; font-display: swap; }
 /* Layout: script-reader app — library rail on the left (drawer on phones), script column centered, transport bar pinned to the bottom. */
 :root {
   --bg: #EEF1EF;
@@ -31,9 +30,9 @@
   --danger: #B3402F;
   --scrim: rgba(12, 20, 17, 0.45);
   --shadow: 0 1px 2px rgba(20, 30, 26, 0.06), 0 10px 28px rgba(20, 30, 26, 0.12);
-  --f-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
-  --f-script: "Newsreader", "Noto Serif KR", "AppleMyungjo", Georgia, serif;
-  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --f-ui: "IM Hyemin", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-script: "IM Hyemin", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-mono: "IM Hyemin", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   --gl: max(16px, env(safe-area-inset-left, 0px));
   --gr: max(16px, env(safe-area-inset-right, 0px));
 }
