@@ -166,7 +166,7 @@ input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; backgroun
 input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--accent); }
 input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid var(--panel); }
 
-.pop { position: absolute; right: var(--gr); bottom: calc(100% + 8px); width: min(340px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 16px; z-index: 20; display: grid; gap: 14px; }
+.pop { position: absolute; right: var(--gr); bottom: calc(100% + 8px); width: min(360px, calc(100vw - 32px)); max-height: min(72vh, 620px); overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 16px; z-index: 20; display: grid; gap: 14px; }
 .pop h3 { margin: 0 0 8px; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
 .rate-row { display: flex; align-items: center; gap: 10px; }
 .rate-val { font-family: var(--f-mono); font-size: 1.4rem; min-width: 3.6em; text-align: center; font-variant-numeric: tabular-nums; }
@@ -256,6 +256,33 @@ body { margin: 0; }
 .who span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .who button { border: 0; background: none; color: var(--accent); font-size: 0.75rem; padding: 2px 0; flex: none; }
 .dl-badge { font-size: 0.7rem; }
+/* Playlist selection */
+.side-tools { display: flex; gap: 6px; padding: 0 16px 8px 0; }
+.side-tools .btn { height: 32px; padding: 0 12px; font-size: 0.8rem; }
+.track-row { display: flex; align-items: stretch; gap: 4px; }
+.track-row .track { flex: 1; min-width: 0; }
+.pick { flex: none; width: 36px; display: grid; place-items: center; border: 0; background: transparent; border-radius: 10px; }
+.pick span { width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--line); display: grid; place-items: center; font-size: 13px; line-height: 1; color: transparent; }
+.pick[aria-pressed="true"] span { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.q-badge { font-family: var(--f-mono); font-size: 0.7rem; color: var(--accent); }
+.track[aria-current="true"] .q-badge { color: inherit; }
+.queue-bar { border-top: 1px solid var(--line); padding: 10px 16px 10px 0; display: grid; gap: 8px; }
+.queue-bar .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--muted); }
+.queue-bar .btn { width: 100%; }
+.queue-pill { font-size: 0.72rem; font-weight: 500; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 8px; margin-left: 6px; white-space: nowrap; }
+/* Editor source switch */
+.seg-ctl { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px; background: var(--bg); }
+.seg-ctl button { height: 38px; border: 0; border-radius: 9px; background: transparent; font-weight: 500; font-size: 0.85rem; }
+.seg-ctl button[aria-pressed="true"] { background: var(--panel); box-shadow: var(--shadow); color: var(--accent); }
+.voice-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.voice { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 8px 8px 12px; background: var(--bg); }
+.voice[aria-checked="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.voice .v-txt { flex: 1; min-width: 0; display: grid; text-align: left; cursor: pointer; }
+.voice .v-txt b { font-weight: 600; font-size: 0.85rem; }
+.voice .v-txt small { color: var(--muted); font-size: 0.72rem; }
+.voice .v-play { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); display: grid; place-items: center; flex: none; }
+.pop .row-tg { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
 </style>
 </head>
 <body>
@@ -269,11 +296,16 @@ body { margin: 0; }
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>새 자료
       </button>
     </div>
+    <div class="side-tools"><button class="btn" id="btnPickMode" type="button" aria-pressed="false">골라서 재생</button></div>
     <ul class="track-list" id="trackList"><li class="side-empty">불러오는 중…</li></ul>
+    <div class="queue-bar" id="queueBar" hidden>
+      <div class="row"><span id="queueCount">0개 선택</span><button class="link-btn" type="button" id="btnPickAll">전체 선택</button></div>
+      <button class="btn primary" id="btnPlayQueue" type="button" disabled>선택한 파일 재생</button>
+    </div>
     <div class="side-foot">
       <div class="who"><span id="whoEmail"></span><button type="button" id="btnLogout">로그아웃</button></div>
       <div class="store-note" id="storeNote">연결 중…</div>
-      <div class="keys" id="keys"><kbd>Space</kbd> 재생 · <kbd>←</kbd><kbd>→</kbd> 문장 이동 · <kbd>R</kbd> 반복 · <kbd>S</kbd> 따라 말하기 · <kbd>[</kbd><kbd>]</kbd> 속도</div>
+      <div class="keys" id="keys"><kbd>Space</kbd> 재생 · <kbd>←</kbd><kbd>→</kbd> 문장 이동 · <kbd>R</kbd> 문장 반복 횟수 · <kbd>S</kbd> 따라 말하기 · <kbd>[</kbd><kbd>]</kbd> 속도</div>
     </div>
   </aside>
   <div class="scrim" id="scrim" hidden></div>
@@ -298,10 +330,10 @@ body { margin: 0; }
     <section class="script-view" id="scriptView">
       <div class="script-in" id="scriptIn"></div>
       <div class="empty" id="emptyView" hidden>
-        <h2>MP3와 스크립트를 올리고 문장 단위로 따라 말해 보세요</h2>
+        <h2>스크립트만 있으면 AI 음성으로, MP3가 있으면 그 음성으로 따라 말해 보세요</h2>
         <p>음성이 재생되는 위치에 맞춰 스크립트가 하이라이트되고, 문장을 누르면 그 부분부터 다시 들을 수 있어요.</p>
         <ol class="steps">
-          <li><span><b>새 자료</b>에서 음성 파일(MP3)과 스크립트를 넣어요.</span></li>
+          <li><span><b>새 자료</b>에서 스크립트를 넣고, MP3를 올리거나 <b>AI 음성으로 만들기</b>를 골라요.</span></li>
           <li><span>음성의 쉬는 구간을 분석해 문장마다 시작 시간을 자동으로 맞춰요. 어긋난 곳은 <b>싱크 조정</b>에서 고칠 수 있어요.</span></li>
           <li><span>문장을 눌러 원하는 곳부터 듣고, 반복·따라 말하기·속도 조절로 연습해요.</span></li>
         </ol>
@@ -345,9 +377,22 @@ Let's start with a quick update from each team.
           <div class="chips" id="rateChips" style="margin-top:10px"></div>
         </div>
         <div>
-          <h3>따라 말하기 쉬는 시간</h3>
-          <div class="chips" id="gapChips"></div>
-          <p class="note">문장이 끝나면 멈추고, 그 문장 길이에 이 배수를 곱한 만큼 기다린 뒤 다음 문장으로 넘어가요.</p>
+          <h3>문장마다 반복</h3>
+          <div class="chips" id="sentChips"></div>
+        </div>
+        <div>
+          <div class="row-tg"><h3 style="margin:0">따라 말하기</h3><div class="chips" id="shadowChips"></div></div>
+          <div class="chips" id="gapChips" style="margin-top:8px"></div>
+          <p class="note">켜면 문장이 끝날 때마다 멈추고, 그 문장 길이에 이 배수를 곱한 만큼 기다린 뒤 이어서 재생해요.</p>
+        </div>
+        <div>
+          <h3>파일마다 반복</h3>
+          <div class="chips" id="fileChips"></div>
+        </div>
+        <div>
+          <h3>재생 목록</h3>
+          <div class="chips" id="loopChips"></div>
+          <p class="note">왼쪽 목록의 <b>골라서 재생</b>으로 들을 파일을 고를 수 있어요.</p>
         </div>
       </div>
       <div class="player-in">
@@ -358,8 +403,8 @@ Let's start with a quick update from each team.
         </div>
         <div class="ctrl-row">
           <div class="ctrl-left">
-            <button class="tg" id="btnRepeat" type="button" aria-pressed="false" title="현재 문장 반복 (R)">
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3 8V7a3 3 0 0 1 3-3h8m0 0-2.5-2.5M14 4l-2.5 2.5M15 10v1a3 3 0 0 1-3 3H4m0 0 2.5 2.5M4 14l2.5-2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>문장 반복</span>
+            <button class="tg" id="btnRepeat" type="button" aria-pressed="false" title="문장마다 반복 횟수 (R)">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3 8V7a3 3 0 0 1 3-3h8m0 0-2.5-2.5M14 4l-2.5 2.5M15 10v1a3 3 0 0 1-3 3H4m0 0 2.5 2.5M4 14l2.5-2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="repeatLbl">반복 1회</span>
             </button>
             <button class="tg" id="btnShadow" type="button" aria-pressed="false" title="문장마다 멈추고 따라 말하기 (S)">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="6.5" y="2" width="5" height="9" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M3.5 8.5a5.5 5.5 0 0 0 11 0M9 14v2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>따라 말하기</span>
@@ -378,7 +423,7 @@ Let's start with a quick update from each team.
             </button>
           </div>
           <div class="ctrl-right">
-            <button class="speed" id="btnRate" type="button" aria-expanded="false" aria-controls="ratePop" title="재생 속도">1.0×</button>
+            <button class="speed" id="btnRate" type="button" aria-expanded="false" aria-controls="ratePop" title="재생 설정">1.0×</button>
           </div>
         </div>
       </div>
@@ -393,6 +438,19 @@ Let's start with a quick update from each team.
     <div class="field">
       <label for="fTitle">제목</label>
       <input type="text" id="fTitle" placeholder="예: TED — How to speak so that people want to listen" autocomplete="off">
+    </div>
+    <div class="field" id="srcField">
+      <span class="lbl">음성</span>
+      <div class="seg-ctl" role="group" aria-label="음성 만들기 방식">
+        <button type="button" id="srcFile" aria-pressed="true">MP3 파일 올리기</button>
+        <button type="button" id="srcAi" aria-pressed="false">AI 음성으로 만들기</button>
+      </div>
+    </div>
+    <div class="field" id="aiField" hidden>
+      <span class="lbl">목소리 <span class="hint">미국 영어 · 20대 여성 · 쾌활하고 차분한 톤</span></span>
+      <div class="voice-list" id="voiceList" role="radiogroup" aria-label="목소리"></div>
+      <span class="lbl" style="margin-top:6px">문장 사이 쉬는 시간</span>
+      <div class="chips" id="pauseChips"></div>
     </div>
     <div class="field" id="fileField">
       <span class="lbl">음성 파일</span>
@@ -757,7 +815,9 @@ let Store = null;
 const state = {
   tracks: [], cur: null, segs: [], idx: -1, loopIdx: -1,
   rate: LS.get('rate', 1), gapFactor: LS.get('gap', 1.2),
-  repeat: false, shadow: LS.get('shadow', false), blind: false,
+  shadow: LS.get('shadow', false), blind: false,
+  sentReps: LS.get('sentReps', 1), repCount: 1, fileReps: LS.get('fileReps', 1), fileCount: 1,
+  listLoop: LS.get('listLoop', false), queue: null, picking: false, picked: new Set(), trackEndAt: 0,
   sync: false, draft: null, cursor: 0,
   gapCb: null, gapUntil: 0, gapTotal: 0, gapTimer: 0,
   userScrollAt: 0, pendingSelect: null, loadingAudio: false, dragging: false,
@@ -779,14 +839,35 @@ function renderList() {
     ul.innerHTML = '<li class="side-empty">아직 자료가 없어요. <b>새 자료</b>로 음성과 스크립트를 추가하세요.</li>';
     return;
   }
-  ul.innerHTML = state.tracks.map((t) => `<li><button class="track" type="button" data-id="${esc(t.id)}" aria-current="${state.cur && state.cur.id === t.id}">
+  const q = state.queue;
+  ul.innerHTML = state.tracks.map((t) => {
+    const qi = q ? q.ids.indexOf(t.id) : -1;
+    const pick = state.picking ? `<button class="pick" type="button" data-pick="${esc(t.id)}" aria-pressed="${state.picked.has(t.id)}" aria-label="재생 목록에 넣기"><span>✓</span></button>` : '';
+    return `<li class="track-row">${pick}<button class="track" type="button" data-id="${esc(t.id)}" aria-current="${state.cur && state.cur.id === t.id}">
     <span class="tk-title">${esc(t.title || '제목 없음')}</span>
-    <span class="tk-meta">문장 ${(t.segments || []).length}개 · ${fmt(t.duration || 0)}${Store.cached && Store.cached.has(t.id) ? ' · 기기에 저장됨' : ''}</span></button></li>`).join('');
+    <span class="tk-meta">${t.source === 'ai' ? 'AI 음성 · ' : ''}문장 ${(t.segments || []).length}개 · ${fmt(t.duration || 0)}${Store.cached && Store.cached.has(t.id) ? ' · 기기에 저장됨' : ''}${qi >= 0 ? ` <span class="q-badge">목록 ${qi + 1}</span>` : ''}</span></button></li>`;
+  }).join('');
+  renderQueueBar();
+}
+function renderQueueBar() {
+  $('#btnPickMode').setAttribute('aria-pressed', String(state.picking));
+  $('#btnPickMode').textContent = state.picking ? '고르기 끝내기' : (state.queue ? '재생 목록 바꾸기' : '골라서 재생');
+  $('#queueBar').hidden = !state.picking;
+  const n = state.picked.size;
+  $('#queueCount').textContent = n + '개 선택';
+  $('#btnPickAll').textContent = n === state.tracks.length && n ? '전체 해제' : '전체 선택';
+  $('#btnPlayQueue').disabled = !n;
+  $('#btnPlayQueue').textContent = n ? `선택한 ${n}개 재생` : '들을 파일을 고르세요';
 }
 function renderHeader() {
   const t = state.cur;
   $('#trackTitle').textContent = t ? (t.title || '제목 없음') : '쉐도잉 플레이어';
   $('#trackMeta').textContent = t ? `문장 ${state.segs.length}개 · ${fmt(t.duration || 0)}` + (state.loadingAudio ? ' · 음성 불러오는 중…' : '') : '';
+  if (t && state.queue) {
+    const pill = document.createElement('span'); pill.className = 'queue-pill';
+    pill.textContent = `재생 목록 ${state.queue.pos + 1}/${state.queue.ids.length}${state.listLoop ? ' · 반복' : ''}`;
+    $('#trackMeta').appendChild(pill);
+  }
   $('#tools').hidden = !t;
   const w = !!(Store && Store.canWrite);
   $('#btnSync').hidden = !w; $('#btnEdit').hidden = !w; $('#btnDel').hidden = !w;
@@ -839,31 +920,60 @@ function tick() {
   const t = audio.currentTime, segs = activeSegs();
   const i = idxAt(segs, t);
   if (!audio.paused && !state.sync && segs.length) {
-    if (state.repeat || state.shadow) {
+    if (looping()) {
       if (state.loopIdx < 0) state.loopIdx = Math.max(0, i);
       if (t >= segEnd(segs, state.loopIdx) - 0.04) { onSegEnd(state.loopIdx); }
-    } else state.loopIdx = i;
+    } else { if (i !== state.loopIdx) state.repCount = 1; state.loopIdx = i; }
   }
   setActive(idxAt(segs, audio.currentTime));
   updateTime(audio.currentTime);
   if (!audio.paused) raf = requestAnimationFrame(tick);
 }
 function kick() { if (!raf) raf = requestAnimationFrame(tick); }
+const looping = () => state.sentReps !== 1 || state.shadow;
+const repsLabel = (n) => (n === 0 ? '계속' : n + '회');
+// End of sentence k while repeating or shadowing: replay it, or move on (to the next file at the end).
 function onSegEnd(k) {
   const segs = activeSegs();
+  const again = state.sentReps === 0 || state.repCount < state.sentReps;
+  const next = again ? k : k + 1;
+  const go = () => {
+    if (next >= segs.length) { onTrackEnd(); return; }
+    state.repCount = again ? state.repCount + 1 : 1;
+    seekTo(segs[next].s); state.loopIdx = next;
+    if (audio.paused) play();
+  };
   if (state.shadow) {
     audio.pause();
     const len = (segEnd(segs, k) - segs[k].s) / state.rate;
     const wait = Math.min(20, Math.max(1, len * state.gapFactor + 0.3));
-    const next = state.repeat ? k : k + 1;
-    startGap(wait, next < segs.length ? `따라 말해 보세요` : '마지막 문장이에요', () => {
-      if (next >= segs.length) return;
-      seekTo(segs[next].s); state.loopIdx = next; play();
-    });
-  } else if (state.repeat) {
-    seekTo(segs[k].s); state.loopIdx = k;
-    if (audio.paused) play();
+    const label = again && state.sentReps !== 1
+      ? `따라 말해 보세요 · ${state.repCount}/${state.sentReps === 0 ? '∞' : state.sentReps}`
+      : '따라 말해 보세요';
+    startGap(wait, label, go);
+  } else go();
+}
+// End of the whole file: repeat the file, play the next one in the list, or stop.
+function onTrackEnd() {
+  if (Date.now() - state.trackEndAt < 1500) return;
+  state.trackEndAt = Date.now();
+  audio.pause();
+  if (state.fileReps === 0 || state.fileCount < state.fileReps) {
+    state.fileCount++;
+    state.repCount = 1;
+    toast(`처음부터 다시 들어요 (${state.fileCount}/${state.fileReps === 0 ? '∞' : state.fileReps})`, 1800);
+    seekTo(activeSegs()[0] ? activeSegs()[0].s : 0); state.loopIdx = 0; play();
+    return;
   }
+  const q = state.queue;
+  if (!q) return;
+  let pos = q.pos + 1;
+  if (pos >= q.ids.length) {
+    if (!state.listLoop) { toast('재생 목록을 다 들었어요.'); return; }
+    pos = 0;
+  }
+  q.pos = pos;
+  selectTrack(q.ids[pos], { autoplay: true, fromStart: true });
 }
 function startGap(sec, label, cb) {
   stopGap();
@@ -892,8 +1002,10 @@ function togglePlay() {
   if (state.gapCb) { finishGap(); return; }
   if (audio.paused) {
     const segs = activeSegs();
-    state.loopIdx = Math.max(0, idxAt(segs, audio.currentTime));
-    if (segs.length && (state.repeat || state.shadow) && audio.currentTime >= segEnd(segs, state.loopIdx) - 0.05) {
+    const li = Math.max(0, idxAt(segs, audio.currentTime));
+    if (li !== state.loopIdx) state.repCount = 1;
+    state.loopIdx = li;
+    if (segs.length && looping() && audio.currentTime >= segEnd(segs, state.loopIdx) - 0.05) {
       state.loopIdx = Math.min(segs.length - 1, state.loopIdx + 1); seekTo(segs[state.loopIdx].s);
     }
     play();
@@ -904,7 +1016,7 @@ function seekLine(i) {
   if (!segs[i]) return;
   stopGap();
   seekTo(segs[i].s);
-  state.loopIdx = i; state.userScrollAt = 0;
+  state.loopIdx = i; state.repCount = 1; state.userScrollAt = 0;
   setActive(i);
   if (state.sync) { state.cursor = i + 1; markCursor(); }
   if (audio.paused) play();
@@ -932,13 +1044,29 @@ function setGap(g) {
   state.gapFactor = g; LS.set('gap', g);
   document.querySelectorAll('#gapChips .chip').forEach((c) => c.setAttribute('aria-pressed', String(Number(c.dataset.v) === g)));
 }
-function setToggle(name, on) {
-  state[name] = on;
-  const btn = name === 'repeat' ? $('#btnRepeat') : $('#btnShadow');
-  btn.setAttribute('aria-pressed', String(on));
-  if (name === 'shadow') LS.set('shadow', on);
-  if (!on && state.gapCb && !(state.shadow)) stopGap();
+function setShadow(on) {
+  state.shadow = on; LS.set('shadow', on);
+  $('#btnShadow').setAttribute('aria-pressed', String(on));
+  document.querySelectorAll('#shadowChips .chip').forEach((c) => c.setAttribute('aria-pressed', String((c.dataset.v === '1') === on)));
+  if (!on && state.gapCb) finishGap();
   state.loopIdx = Math.max(0, idxAt(activeSegs(), audio.currentTime));
+}
+const SENT_OPTS = [1, 2, 3, 5, 0], FILE_OPTS = [1, 2, 3, 0];
+function setSentReps(n) {
+  state.sentReps = n; state.repCount = 1; LS.set('sentReps', n);
+  $('#repeatLbl').textContent = n === 1 ? '반복 1회' : '반복 ' + repsLabel(n);
+  $('#btnRepeat').setAttribute('aria-pressed', String(n !== 1));
+  document.querySelectorAll('#sentChips .chip').forEach((c) => c.setAttribute('aria-pressed', String(Number(c.dataset.v) === n)));
+  state.loopIdx = Math.max(0, idxAt(activeSegs(), audio.currentTime));
+}
+function setFileReps(n) {
+  state.fileReps = n; LS.set('fileReps', n);
+  document.querySelectorAll('#fileChips .chip').forEach((c) => c.setAttribute('aria-pressed', String(Number(c.dataset.v) === n)));
+}
+function setListLoop(on) {
+  state.listLoop = on; LS.set('listLoop', on);
+  document.querySelectorAll('#loopChips .chip').forEach((c) => c.setAttribute('aria-pressed', String((c.dataset.v === '1') === on)));
+  renderHeader();
 }
 
 let wakeLock = null;
@@ -960,7 +1088,9 @@ audio.addEventListener('timeupdate', () => { if (audio.paused) kick(); throttleS
 audio.addEventListener('loadedmetadata', () => updateTime(audio.currentTime));
 audio.addEventListener('ended', () => {
   const segs = activeSegs();
-  if (segs.length && (state.repeat || state.shadow) && !state.sync) onSegEnd(segs.length - 1);
+  if (state.sync) return;
+  if (segs.length && looping()) onSegEnd(segs.length - 1);
+  else onTrackEnd();
 });
 audio.addEventListener('ratechange', () => { if (Math.abs(audio.playbackRate - state.rate) > 0.001) audio.playbackRate = state.rate; });
 
@@ -987,9 +1117,14 @@ function cacheBlob(id, blob) {
   }
   return entry;
 }
-async function selectTrack(id) {
+async function selectTrack(id, opts = {}) {
   const t = state.tracks.find((x) => x.id === id);
   if (!t) return;
+  if (state.queue && !opts.autoplay) {
+    const qi = state.queue.ids.indexOf(id);
+    if (qi >= 0) state.queue.pos = qi; else state.queue = null;
+  }
+  state.fileCount = 1; state.repCount = 1;
   savePos();
   stopGap(); if (state.sync) exitSync();
   audio.pause();
@@ -1005,13 +1140,14 @@ async function selectTrack(id) {
     await getBlob(t);
     if (state.cur !== t) return;
     const entry = urlCache.get(t.id);
-    const pos = LS.get('pos:' + id, 0);
+    const pos = opts.fromStart ? 0 : LS.get('pos:' + id, 0);
     audio.src = entry.url;
     audio.defaultPlaybackRate = state.rate; audio.playbackRate = state.rate;
     audio.preservesPitch = true; audio.webkitPreservesPitch = true;
     audio.addEventListener('loadedmetadata', () => {
       if (pos > 0 && pos < audio.duration - 1) audio.currentTime = pos;
       kick();
+      if (opts.autoplay) { state.loopIdx = 0; play(); }
     }, { once: true });
     $('#btnPlay').disabled = false;
     setMediaSession(t);
@@ -1033,6 +1169,14 @@ function setMediaSession(t) {
 }
 function onTracks(list) {
   state.tracks = list;
+  const ids = new Set(list.map((t) => t.id));
+  state.picked.forEach((id) => { if (!ids.has(id)) state.picked.delete(id); });
+  if (state.queue) {
+    const cur = state.queue.ids[state.queue.pos];
+    state.queue.ids = state.queue.ids.filter((id) => ids.has(id));
+    if (!state.queue.ids.length) state.queue = null;
+    else state.queue.pos = Math.max(0, state.queue.ids.indexOf(cur));
+  }
   if (state.pendingSelect && list.some((t) => t.id === state.pendingSelect)) {
     const id = state.pendingSelect; state.pendingSelect = null;
     selectTrack(id); return;
@@ -1132,6 +1276,89 @@ async function saveSync() {
   finally { btn.disabled = false; }
 }
 
+/* ---------- AI voice ---------- */
+const VOICES = [
+  { id: 'marin', name: 'Marin', note: '가장 자연스러운 기본 목소리' },
+  { id: 'coral', name: 'Coral', note: '밝고 생기 있는 톤' },
+  { id: 'nova', name: 'Nova', note: '또렷하고 경쾌한 톤' },
+  { id: 'shimmer', name: 'Shimmer', note: '부드럽고 차분한 톤' },
+  { id: 'sage', name: 'Sage', note: '따뜻하고 안정적인 톤' },
+];
+const PAUSES = [[0.4, '짧게'], [0.7, '보통'], [1.2, '길게']];
+const TTS_RATE = 24000; // OpenAI "pcm" output: 24 kHz, 16-bit, mono
+let edSource = 'file', voice = LS.get('voice', 'marin'), ttsPause = LS.get('ttsPause', 0.7);
+async function ttsPcm(text, v) {
+  const res = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ text, voice: v }) });
+  if (res.status === 401) { signOut(); throw new Error('다시 로그인해 주세요.'); }
+  if (!res.ok) { let m = null; try { m = (await res.json()).error; } catch (e) {} throw new Error(m || 'AI 음성을 만들지 못했어요 (' + res.status + ').'); }
+  const buf = await res.arrayBuffer();
+  return new Int16Array(buf, 0, buf.byteLength >> 1);
+}
+function pcmToWav(chunks) {
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const h = new DataView(new ArrayBuffer(44));
+  const str = (o, t) => { for (let i = 0; i < t.length; i++) h.setUint8(o + i, t.charCodeAt(i)); };
+  str(0, 'RIFF'); h.setUint32(4, 36 + total * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+  h.setUint32(16, 16, true); h.setUint16(20, 1, true); h.setUint16(22, 1, true);
+  h.setUint32(24, TTS_RATE, true); h.setUint32(28, TTS_RATE * 2, true); h.setUint16(32, 2, true); h.setUint16(34, 16, true);
+  str(36, 'data'); h.setUint32(40, total * 2, true);
+  return new Blob([h, ...chunks], { type: 'audio/wav' });
+}
+const silence = (sec) => new Int16Array(Math.round(sec * TTS_RATE));
+// Read each sentence separately, then join them with pauses so every sentence's start time is exact.
+async function synthesize(texts, v, pause, onProgress) {
+  const out = new Array(texts.length);
+  let next = 0, done = 0;
+  const worker = async () => {
+    while (next < texts.length) {
+      const i = next++;
+      out[i] = await ttsPcm(texts[i], v);
+      onProgress && onProgress(++done, texts.length);
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  const chunks = [silence(0.3)], segs = [];
+  let t = 0.3;
+  texts.forEach((text, i) => {
+    segs.push({ s: r2(Math.max(0, t - 0.05)), t: text });
+    chunks.push(out[i]); t += out[i].length / TTS_RATE;
+    const gap = i < texts.length - 1 ? pause : 0.6;
+    chunks.push(silence(gap)); t += gap;
+  });
+  return { blob: pcmToWav(chunks), segs, duration: r2(t) };
+}
+const previewCache = new Map();
+let previewAudio = null;
+async function previewVoice(v, btn) {
+  try {
+    if (previewAudio) previewAudio.pause();
+    btn.disabled = true;
+    let url = previewCache.get(v);
+    if (!url) {
+      const pcm = await ttsPcm("Hi! I'm so glad you're here. Let's practice speaking English together, one sentence at a time.", v);
+      url = URL.createObjectURL(pcmToWav([pcm]));
+      previewCache.set(v, url);
+    }
+    previewAudio = new Audio(url); previewAudio.play();
+  } catch (e) { showErr(e.message); }
+  finally { btn.disabled = false; }
+}
+function renderVoices() {
+  $('#voiceList').innerHTML = VOICES.map((x) => `<div class="voice" role="radio" aria-checked="${x.id === voice}" data-voice="${x.id}">
+    <span class="v-txt" data-pickvoice="${x.id}"><b>${x.name}</b><small>${x.note}</small></span>
+    <button class="v-play" type="button" data-preview="${x.id}" aria-label="${x.name} 미리 듣기"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.5v9l7.5-4.5z" fill="currentColor"/></svg></button></div>`).join('');
+  $('#pauseChips').innerHTML = PAUSES.map(([v, l]) => `<button class="chip" type="button" data-v="${v}" aria-pressed="${v === ttsPause}">${l} ${v}초</button>`).join('');
+}
+function setSource(src) {
+  edSource = src;
+  $('#srcFile').setAttribute('aria-pressed', String(src === 'file'));
+  $('#srcAi').setAttribute('aria-pressed', String(src === 'ai'));
+  $('#fileField').hidden = src !== 'file';
+  $('#aiField').hidden = src !== 'ai';
+  if (src === 'ai') renderVoices();
+  updateHint();
+}
+
 /* ---------- editor ---------- */
 let editMode = null, pickedFile = null, initialScript = '';
 function openEditor(mode) {
@@ -1145,17 +1372,18 @@ function openEditor(mode) {
     $('#fTitle').value = state.cur.title || '';
     initialScript = state.segs.map((s) => s.t).join('\n');
     $('#fScript').value = initialScript;
-    $('#fileField').hidden = true;
+    $('#fileField').hidden = true; $('#srcField').hidden = true; $('#aiField').hidden = true;
   } else {
     $('#edTitle').textContent = '새 자료';
     $('#edSave').textContent = '추가하기';
     $('#fTitle').value = ''; $('#fScript').value = ''; initialScript = '';
-    $('#fileField').hidden = false;
+    $('#srcField').hidden = false;
     setPicked(null);
+    setSource(edSource);
   }
   updateHint();
   ed.hidden = false; setBusy(false);
-  setTimeout(() => (mode === 'edit' ? $('#fTitle') : $('#fFile')).focus({ preventScroll: true }), 30);
+  setTimeout(() => (mode === 'edit' || edSource === 'ai' ? $('#fTitle') : $('#fFile')).focus({ preventScroll: true }), 30);
 }
 function closeEditor() { $('#editor').hidden = true; }
 function setPicked(f) {
@@ -1167,8 +1395,16 @@ function setPicked(f) {
 function updateHint() {
   const raw = $('#fScript').value, h = $('#scriptHint');
   h.className = 'hint';
-  if (!raw.trim()) { h.textContent = '한 줄에 한 문장씩 넣으면 음성을 분석해 시간을 자동으로 맞춰요.'; return; }
+  const ai = editMode !== 'edit' ? edSource === 'ai' : !!(state.cur && state.cur.source === 'ai');
+  if (!raw.trim()) { h.textContent = ai ? '영어 스크립트를 한 줄에 한 문장씩 넣으면 AI가 문장마다 읽어요.' : '한 줄에 한 문장씩 넣으면 음성을 분석해 시간을 자동으로 맞춰요.'; return; }
   const p = parseScript(raw);
+  if (ai && !(editMode === 'edit' && raw.trim() === initialScript.trim())) {
+    const texts = p.timed ? p.segs.map((x) => x.t) : p.texts;
+    const words = texts.join(' ').split(/\s+/).filter(Boolean).length;
+    h.className = 'hint ok';
+    h.textContent = `문장 ${texts.length}개 · AI가 읽으면 약 ${Math.max(1, Math.round(words / 150 + texts.length * ttsPause / 60))}분 길이예요.` + (editMode === 'edit' ? ' 저장하면 음성을 새로 만들어요.' : '');
+    return;
+  }
   if (editMode === 'edit' && raw.trim() === initialScript.trim()) { h.textContent = `문장 ${state.segs.length}개 · 스크립트를 바꾸지 않으면 지금 싱크를 그대로 써요.`; return; }
   h.classList.add('ok');
   h.textContent = p.timed ? `문장 ${p.segs.length}개 · ${p.kind} 시간 정보를 그대로 사용해요.` : `문장 ${p.texts.length}개 · 음성을 분석해 시간을 자동으로 맞춰요.`;
@@ -1201,6 +1437,20 @@ async function submitEditor(ev) {
     if (editMode === 'edit') {
       const t = state.cur;
       const fields = { title: title || t.title };
+      if (raw.trim() !== initialScript.trim() && t.source === 'ai') {
+        const texts = parsed.timed ? parsed.segs.map((x) => x.t) : parsed.texts;
+        const v = t.voice || voice;
+        const gen = await synthesize(texts, v, t.pause || ttsPause, (i, n) => setBusy(true, `AI 음성을 만드는 중… (${i}/${n})`));
+        setBusy(true, '저장하는 중…');
+        const meta = { title: fields.title, segments: gen.segs, duration: gen.duration, size: gen.blob.size, createdAt: t.createdAt || Date.now(), source: 'ai', voice: v, pause: t.pause || ttsPause };
+        const id = await Store.add(meta, gen.blob, (i, n) => setBusy(true, `업로드하는 중… (${i}/${n})`));
+        cacheBlob(id, gen.blob);
+        await Store.remove(t);
+        closeEditor();
+        if (state.tracks.some((x) => x.id === id)) selectTrack(id); else state.pendingSelect = id;
+        toast('새 스크립트로 AI 음성을 다시 만들었어요.');
+        return;
+      }
       if (raw.trim() !== initialScript.trim()) {
         if (parsed.timed) fields.segments = parsed.segs.map((s) => ({ s: r2(s.s), t: s.t }));
         else {
@@ -1216,6 +1466,19 @@ async function submitEditor(ev) {
       if (fields.segments) { state.segs = fields.segments; renderLines(); }
       renderHeader(); renderList();
       closeEditor(); toast('저장했어요.');
+      return;
+    }
+    if (edSource === 'ai') {
+      const texts = parsed.timed ? parsed.segs.map((x) => x.t) : parsed.texts;
+      if (texts.length > 400) return showErr('문장이 너무 많아요. 400문장 이하로 나눠서 만들어 주세요.');
+      const gen = await synthesize(texts, voice, ttsPause, (i, n) => setBusy(true, `AI 음성을 만드는 중… (${i}/${n})`));
+      const meta = { title: title || texts[0].slice(0, 60), segments: gen.segs, duration: gen.duration, size: gen.blob.size, createdAt: Date.now(), source: 'ai', voice, pause: ttsPause };
+      setBusy(true, '저장하는 중…');
+      const id = await Store.add(meta, gen.blob, (i, n) => setBusy(true, n > 1 ? `업로드하는 중… (${i}/${n})` : '업로드하는 중…'));
+      cacheBlob(id, gen.blob);
+      closeEditor();
+      if (state.tracks.some((t) => t.id === id)) selectTrack(id); else state.pendingSelect = id;
+      toast('AI 음성을 만들었어요. 문장을 눌러 재생해 보세요.');
       return;
     }
     const file = pickedFile;
@@ -1254,7 +1517,32 @@ $('#btnMenu').addEventListener('click', openNav);
 $('#scrim').addEventListener('click', closeNav);
 $('#btnAdd').addEventListener('click', () => { closeNav(); openEditor('add'); });
 $('#btnAdd2').addEventListener('click', () => openEditor('add'));
-$('#trackList').addEventListener('click', (e) => { const b = e.target.closest('.track'); if (b) selectTrack(b.dataset.id); });
+$('#trackList').addEventListener('click', (e) => {
+  const p = e.target.closest('[data-pick]');
+  if (p) { const id = p.dataset.pick; state.picked.has(id) ? state.picked.delete(id) : state.picked.add(id); renderList(); return; }
+  const b = e.target.closest('.track');
+  if (!b) return;
+  if (state.picking) { const id = b.dataset.id; state.picked.has(id) ? state.picked.delete(id) : state.picked.add(id); renderList(); return; }
+  selectTrack(b.dataset.id);
+});
+$('#btnPickMode').addEventListener('click', () => {
+  state.picking = !state.picking;
+  if (state.picking) state.picked = new Set(state.queue ? state.queue.ids : []);
+  renderList();
+});
+$('#btnPickAll').addEventListener('click', () => {
+  state.picked = state.picked.size === state.tracks.length ? new Set() : new Set(state.tracks.map((t) => t.id));
+  renderList();
+});
+$('#btnPlayQueue').addEventListener('click', () => {
+  const ids = state.tracks.map((t) => t.id).filter((id) => state.picked.has(id));
+  if (!ids.length) return;
+  state.queue = { ids, pos: 0 };
+  state.picking = false;
+  renderList();
+  toast(`${ids.length}개 파일을 차례로 재생해요.`);
+  selectTrack(ids[0], { autoplay: true, fromStart: true });
+});
 
 $('#scriptIn').addEventListener('click', (e) => {
   const act = e.target.closest('[data-act]');
@@ -1276,8 +1564,17 @@ $('#scriptIn').addEventListener('keydown', (e) => {
 $('#btnPlay').addEventListener('click', togglePlay);
 $('#btnPrev').addEventListener('click', () => stepSeg(-1));
 $('#btnNext').addEventListener('click', () => stepSeg(1));
-$('#btnRepeat').addEventListener('click', () => setToggle('repeat', !state.repeat));
-$('#btnShadow').addEventListener('click', () => setToggle('shadow', !state.shadow));
+const cycleSent = () => setSentReps(SENT_OPTS[(SENT_OPTS.indexOf(state.sentReps) + 1) % SENT_OPTS.length]);
+$('#btnRepeat').addEventListener('click', cycleSent);
+$('#btnShadow').addEventListener('click', () => setShadow(!state.shadow));
+$('#sentChips').innerHTML = SENT_OPTS.map((v) => `<button class="chip" type="button" data-v="${v}">${v === 1 ? '안 함' : repsLabel(v)}</button>`).join('');
+$('#sentChips').addEventListener('click', (e) => { const c = e.target.closest('.chip'); if (c) setSentReps(Number(c.dataset.v)); });
+$('#fileChips').innerHTML = FILE_OPTS.map((v) => `<button class="chip" type="button" data-v="${v}">${v === 1 ? '안 함' : repsLabel(v)}</button>`).join('');
+$('#fileChips').addEventListener('click', (e) => { const c = e.target.closest('.chip'); if (c) setFileReps(Number(c.dataset.v)); });
+$('#shadowChips').innerHTML = '<button class="chip" type="button" data-v="0">끄기</button><button class="chip" type="button" data-v="1">켜기</button>';
+$('#shadowChips').addEventListener('click', (e) => { const c = e.target.closest('.chip'); if (c) setShadow(c.dataset.v === '1'); });
+$('#loopChips').innerHTML = '<button class="chip" type="button" data-v="0">끝나면 멈추기</button><button class="chip" type="button" data-v="1">처음부터 반복</button>';
+$('#loopChips').addEventListener('click', (e) => { const c = e.target.closest('.chip'); if (c) setListLoop(c.dataset.v === '1'); });
 $('#gapPill').addEventListener('click', finishGap);
 
 const seek = $('#seek');
@@ -1340,7 +1637,19 @@ $('#cfYes').addEventListener('click', async () => {
 });
 
 $('#editorForm').addEventListener('submit', submitEditor);
-$('#edCancel').addEventListener('click', closeEditor);
+$('#srcFile').addEventListener('click', () => setSource('file'));
+$('#srcAi').addEventListener('click', () => setSource('ai'));
+$('#voiceList').addEventListener('click', (e) => {
+  const pv = e.target.closest('[data-preview]');
+  if (pv) { previewVoice(pv.dataset.preview, pv); return; }
+  const card = e.target.closest('[data-voice]');
+  if (card) { voice = card.dataset.voice; LS.set('voice', voice); renderVoices(); }
+});
+$('#pauseChips').addEventListener('click', (e) => {
+  const c = e.target.closest('.chip');
+  if (c) { ttsPause = Number(c.dataset.v); LS.set('ttsPause', ttsPause); renderVoices(); updateHint(); }
+});
+$('#edCancel').addEventListener('click', () => { if (previewAudio) previewAudio.pause(); closeEditor(); });
 $('#fFile').addEventListener('change', (e) => setPicked(e.target.files[0] || null));
 $('#fScript').addEventListener('input', () => { clearTimeout(updateHint.t); updateHint.t = setTimeout(updateHint, 200); });
 $('#fScriptFile').addEventListener('change', async (e) => {
@@ -1368,8 +1677,8 @@ document.addEventListener('keydown', (e) => {
   }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); stepSeg(-1); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); stepSeg(1); }
-  else if (e.key === 'r' || e.key === 'R') setToggle('repeat', !state.repeat);
-  else if (e.key === 's' || e.key === 'S') setToggle('shadow', !state.shadow);
+  else if (e.key === 'r' || e.key === 'R') cycleSent();
+  else if (e.key === 's' || e.key === 'S') setShadow(!state.shadow);
   else if (e.key === '[') setRate(state.rate - 0.05);
   else if (e.key === ']') setRate(state.rate + 0.05);
 });
@@ -1377,7 +1686,7 @@ window.addEventListener('pagehide', savePos);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !audio.paused) lockScreen(true); });
 
 /* ---------- boot ---------- */
-setRate(state.rate); setGap(state.gapFactor); setToggle('shadow', state.shadow);
+setRate(state.rate); setGap(state.gapFactor); setShadow(state.shadow); setSentReps(state.sentReps); setFileReps(state.fileReps); setListLoop(state.listLoop);
 if (!window.matchMedia || !matchMedia('(hover: hover)').matches) $('#keys').hidden = true;
 renderHeader(); renderLines();
 
