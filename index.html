@@ -1278,22 +1278,25 @@ async function saveSync() {
 }
 
 /* ---------- AI voice ---------- */
-const VOICES = [
-  { id: 'marin', name: 'Marin', note: '가장 자연스러운 기본 목소리' },
-  { id: 'coral', name: 'Coral', note: '밝고 생기 있는 톤' },
-  { id: 'nova', name: 'Nova', note: '또렷하고 경쾌한 톤' },
-  { id: 'shimmer', name: 'Shimmer', note: '부드럽고 차분한 톤' },
-  { id: 'sage', name: 'Sage', note: '따뜻하고 안정적인 톤' },
-];
+// Voices come from /api/tts: ElevenLabs voices on the account (if a key is set) and OpenAI voices.
+// A voice id is "<engine>:<id>", e.g. "el:cgSgspJ2msm6clMCkdW9" or "oa:marin".
 const STYLES = [['talk', '자연스러운 대화'], ['present', '발표·설명'], ['story', '이야기 들려주기']];
-const TTS_RATE = 24000; // OpenAI "pcm" output: 24 kHz, 16-bit, mono
-let edSource = 'file', voice = LS.get('voice', 'marin'), ttsStyle = LS.get('ttsStyle', 'talk');
-async function ttsPcm(text, v, style) {
-  const res = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ text, voice: v, style }) });
-  if (res.status === 401) { signOut(); throw new Error('다시 로그인해 주세요.'); }
-  if (!res.ok) { let m = null; try { m = (await res.json()).error; } catch (e) {} throw new Error(m || 'AI 음성을 만들지 못했어요 (' + res.status + ').'); }
-  const buf = await res.arrayBuffer();
-  return new Int16Array(buf, 0, buf.byteLength >> 1);
+const TTS_RATE = 24000; // both engines return 24 kHz, 16-bit, mono PCM
+let edSource = 'file', voice = LS.get('voice2', ''), ttsStyle = LS.get('ttsStyle', 'talk'), ttsInfo = null;
+async function loadTtsInfo() {
+  if (ttsInfo && !ttsInfo.error) return ttsInfo;
+  try { ttsInfo = await api('/api/tts'); } catch (e) { ttsInfo = { voices: [], error: e.message }; }
+  if (!ttsInfo.voices.some((x) => x.id === voice)) voice = ttsInfo.voices[0] ? ttsInfo.voices[0].id : '';
+  return ttsInfo;
+}
+function b64ToInt16(b64) {
+  const bin = atob(b64), u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return new Int16Array(u.buffer, 0, u.length >> 1);
+}
+async function ttsGen(text, v, style) {
+  const r = await api('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice: v, style }) });
+  return { pcm: b64ToInt16(r.audio), alignment: r.alignment || null };
 }
 function pcmToWav(chunks) {
   const total = chunks.reduce((n, c) => n + c.length, 0);
@@ -1307,7 +1310,7 @@ function pcmToWav(chunks) {
 }
 const silence = (sec) => new Int16Array(Math.round(sec * TTS_RATE));
 // Group sentences into passages so the voice keeps natural intonation and pauses across sentences.
-function passages(texts, maxChars = 700) {
+function passages(texts, maxChars = 500) {
   const out = []; let cur = [], len = 0;
   texts.forEach((t, i) => {
     if (cur.length && len + t.length > maxChars) { out.push(cur); cur = []; len = 0; }
@@ -1325,6 +1328,14 @@ function analyzePcm(pcm) {
   }
   return { db, hop: hopN / TTS_RATE, duration: pcm.length / TTS_RATE };
 }
+// ElevenLabs returns a start time for every character of the passage, so sentence starts are exact.
+function startsFromAlignment(gTexts, al) {
+  if (!al || !Array.isArray(al.character_start_times_seconds)) return null;
+  const times = al.character_start_times_seconds;
+  if (times.length !== gTexts.join(' ').length) return null;
+  let off = 0;
+  return gTexts.map((x) => { const st = times[off]; off += x.length + 1; return st; });
+}
 // Read passage by passage, then find where each sentence starts inside the audio the voice produced.
 async function synthesize(texts, v, style, onProgress) {
   const groups = passages(texts), out = new Array(groups.length);
@@ -1332,7 +1343,7 @@ async function synthesize(texts, v, style, onProgress) {
   const worker = async () => {
     while (next < groups.length) {
       const g = next++;
-      out[g] = await ttsPcm(groups[g].map((i) => texts[i]).join(' '), v, style);
+      out[g] = await ttsGen(groups[g].map((i) => texts[i]).join(' '), v, style);
       onProgress && onProgress(++done, groups.length);
     }
   };
@@ -1340,8 +1351,10 @@ async function synthesize(texts, v, style, onProgress) {
   const chunks = [silence(0.2)], segs = [];
   let t = 0.2;
   groups.forEach((g, gi) => {
-    const pcm = out[gi], gTexts = g.map((i) => texts[i]);
-    align(gTexts, analyzePcm(pcm), pcm.length / TTS_RATE).forEach((x) => segs.push({ s: r2(t + x.s), t: x.t }));
+    const { pcm, alignment } = out[gi], gTexts = g.map((i) => texts[i]);
+    const exact = startsFromAlignment(gTexts, alignment);
+    if (exact) gTexts.forEach((x, k) => segs.push({ s: r2(Math.max(0, t + exact[k] - 0.08)), t: x }));
+    else align(gTexts, analyzePcm(pcm), pcm.length / TTS_RATE).forEach((x) => segs.push({ s: r2(t + x.s), t: x.t }));
     chunks.push(pcm); t += pcm.length / TTS_RATE;
     const gap = gi < groups.length - 1 ? 0.35 : 0.6;
     chunks.push(silence(gap)); t += gap;
@@ -1357,7 +1370,7 @@ async function previewVoice(v, btn) {
     const key = v + ':' + ttsStyle;
     let url = previewCache.get(key);
     if (!url) {
-      const pcm = await ttsPcm("Hey, I'm so glad you made it! Honestly, I wasn't sure you'd have time today. So, how's everything going with the new project?", v, ttsStyle);
+      const { pcm } = await ttsGen("Hey, I'm so glad you made it! Honestly, I wasn't sure you'd have time today. So, how's everything going with the new project?", v, ttsStyle);
       url = URL.createObjectURL(pcmToWav([pcm]));
       previewCache.set(key, url);
     }
@@ -1366,9 +1379,19 @@ async function previewVoice(v, btn) {
   finally { btn.disabled = false; }
 }
 function renderVoices() {
-  $('#voiceList').innerHTML = VOICES.map((x) => `<div class="voice" role="radio" aria-checked="${x.id === voice}" data-voice="${x.id}">
-    <span class="v-txt" data-pickvoice="${x.id}"><b>${x.name}</b><small>${x.note}</small></span>
-    <button class="v-play" type="button" data-preview="${x.id}" aria-label="${x.name} 미리 듣기"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.5v9l7.5-4.5z" fill="currentColor"/></svg></button></div>`).join('');
+  const box = $('#voiceList');
+  if (!ttsInfo) { box.innerHTML = '<span class="hint">목소리 목록을 불러오는 중…</span>'; }
+  else if (!ttsInfo.voices.length) { box.innerHTML = `<span class="hint err">${esc(ttsInfo.error || 'AI 음성을 쓰려면 Vercel에 ELEVENLABS_API_KEY 또는 OPENAI_API_KEY를 추가해야 해요.')}</span>`; }
+  else {
+    const groups = [['elevenlabs', 'ElevenLabs · 감정 표현이 풍부해요'], ['openai', 'OpenAI']];
+    box.innerHTML = groups.map(([eng, label]) => {
+      const list = ttsInfo.voices.filter((x) => x.engine === eng);
+      if (!list.length) return '';
+      return `<span class="hint" style="grid-column:1/-1">${label}</span>` + list.map((x) => `<div class="voice" role="radio" aria-checked="${x.id === voice}" data-voice="${esc(x.id)}">
+    <span class="v-txt" data-pickvoice="${esc(x.id)}"><b>${esc(x.name)}</b><small>${esc(x.note || '')}</small></span>
+    <button class="v-play" type="button" data-preview="${esc(x.id)}" aria-label="${esc(x.name)} 미리 듣기"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.5v9l7.5-4.5z" fill="currentColor"/></svg></button></div>`).join('');
+    }).join('');
+  }
   $('#styleChips').innerHTML = STYLES.map(([v, l]) => `<button class="chip" type="button" data-v="${v}" aria-pressed="${v === ttsStyle}">${l}</button>`).join('');
 }
 function setSource(src) {
@@ -1377,7 +1400,7 @@ function setSource(src) {
   $('#srcAi').setAttribute('aria-pressed', String(src === 'ai'));
   $('#fileField').hidden = src !== 'file';
   $('#aiField').hidden = src !== 'ai';
-  if (src === 'ai') renderVoices();
+  if (src === 'ai') { renderVoices(); loadTtsInfo().then(renderVoices); }
   updateHint();
 }
 
@@ -1462,6 +1485,7 @@ async function submitEditor(ev) {
       if (raw.trim() !== initialScript.trim() && t.source === 'ai') {
         const texts = parsed.timed ? parsed.segs.map((x) => x.t) : parsed.texts;
         const v = t.voice || voice;
+        if (!v) throw new Error('목소리를 고르세요.');
         const st = t.style || ttsStyle;
         const gen = await synthesize(texts, v, st, (i, n) => setBusy(true, `AI 음성을 만드는 중… (${i}/${n})`));
         setBusy(true, '저장하는 중…');
@@ -1492,6 +1516,7 @@ async function submitEditor(ev) {
       return;
     }
     if (edSource === 'ai') {
+      if (!voice) return showErr('목소리를 고르세요. 목록이 비어 있으면 Vercel에 AI 음성 API 키를 추가해야 해요.');
       const texts = parsed.timed ? parsed.segs.map((x) => x.t) : parsed.texts;
       if (texts.length > 400) return showErr('문장이 너무 많아요. 400문장 이하로 나눠서 만들어 주세요.');
       const gen = await synthesize(texts, voice, ttsStyle, (i, n) => setBusy(true, `AI 음성을 만드는 중… (${i}/${n})`));
@@ -1666,7 +1691,7 @@ $('#voiceList').addEventListener('click', (e) => {
   const pv = e.target.closest('[data-preview]');
   if (pv) { previewVoice(pv.dataset.preview, pv); return; }
   const card = e.target.closest('[data-voice]');
-  if (card) { voice = card.dataset.voice; LS.set('voice', voice); renderVoices(); }
+  if (card) { voice = card.dataset.voice; LS.set('voice2', voice); renderVoices(); }
 });
 $('#styleChips').addEventListener('click', (e) => {
   const c = e.target.closest('.chip');

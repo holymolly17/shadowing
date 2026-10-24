@@ -8,7 +8,7 @@ MP3와 스크립트를 올리면 음성에 맞춰 문장이 하이라이트되�
 
 ## 기능
 
-- AI 음성: 스크립트만 넣으면 OpenAI 음성(미국 영어, 20대 여성)으로 문장마다 읽어 MP3 없이 연습
+- AI 음성: 스크립트만 넣으면 ElevenLabs 또는 OpenAI 음성(미국 영어, 20대 여성)이 이어 읽어 MP3 없이 연습
 - 스크립트 자동 정렬: 한 줄에 한 문장을 넣으면 음성의 쉬는 구간을 분석해 문장 시작 시간을 맞춤
 - 시간 표기 스크립트(`[00:12] 문장`), SRT·VTT·LRC 자막 지원
 - 싱크 조정: 재생하며 탭으로 맞추기, 문장별 ±0.1초 조정
@@ -21,8 +21,9 @@ MP3와 스크립트를 올리면 음성에 맞춰 문장이 하이라이트되�
 1. Vercel 프로젝트 → **Storage** → **Create Database** → **Blob** → 이 프로젝트에 연결(Connect).
    `BLOB_STORE_ID`(또는 `BLOB_READ_WRITE_TOKEN`) 환경 변수가 자동으로 추가됩니다.
 2. Vercel 프로젝트 → **Settings → Environment Variables**에 `APP_PASSWORD`(앱 비밀번호)를 추가.
-3. (AI 음성을 쓰려면) https://platform.openai.com/api-keys 에서 API 키를 만들고 `OPENAI_API_KEY`로 추가.
-   OpenAI 계정에 결제 수단(크레딧)이 있어야 합니다.
+3. (AI 음성을 쓰려면) 둘 중 하나 이상을 추가합니다.
+   - `ELEVENLABS_API_KEY`: https://elevenlabs.io → Developers → API Keys. 감정 표현이 가장 풍부합니다(모델 `eleven_v3`).
+   - `OPENAI_API_KEY`: https://platform.openai.com/api-keys (결제 수단 필요)
 4. **Deployments**에서 최신 배포의 **⋯ → Redeploy**. (환경 변수는 다시 배포해야 적용됩니다.)
 
 ## 앱으로 설치하기
@@ -33,7 +34,7 @@ MP3와 스크립트를 올리면 음성에 맞춰 문장이 하이라이트되�
 
 ## 참고
 
-- AI 음성 모델은 `gpt-4o-mini-tts`이고, 환경 변수 `OPENAI_TTS_MODEL`로 바꿀 수 있습니다. 비용은 OpenAI 요금을 따릅니다.
+- AI 음성 모델은 `ELEVENLABS_MODEL`(기본 `eleven_v3`), `OPENAI_TTS_MODEL`(기본 `gpt-4o-mini-tts`)로 바꿀 수 있습니다. 비용은 각 서비스 요금을 따릅니다.
 
 - 음성은 4MB 조각으로 나눠 저장됩니다. 저장된 파일 주소는 추측할 수 없는 무작위 주소지만 공개(public) 주소이므로, 민감한 녹음은 올리지 마세요.
 - 비밀번호를 바꾸면 모든 기기에서 다시 로그인해야 합니다.
