@@ -914,19 +914,37 @@ function updateTime(t) {
 }
 
 /* ---------- playback ---------- */
-let raf = 0;
+// The audio element never pauses on its own between sentences: shadowing gaps play the
+// sentence again with the sound muted. Phones keep a page running in the background only
+// while its audio is playing, so this keeps repeats, gaps and the playlist working with the
+// screen off. Sentence ends are checked from timeupdate and a timer, not only from frames.
+let raf = 0, endTimer = 0;
+function step() {
+  const t = audio.currentTime, segs = activeSegs();
+  if (audio.paused || state.sync || !segs.length) return;
+  if (state.gapCb) {
+    const g = state.gapLoop;
+    if (Date.now() >= state.gapUntilMs) { finishGap(); return; }
+    if (g && t >= g.end - 0.05) seekTo(g.start, true);
+    else if (g && !endTimer) endTimer = setTimeout(() => { endTimer = 0; step(); }, Math.min(250, Math.max(0, ((g.end - t) / state.rate) * 1000 - 30)));
+    return;
+  }
+  const i = idxAt(segs, t);
+  if (!looping()) { if (i !== state.loopIdx) state.repCount = 1; state.loopIdx = i; return; }
+  if (state.loopIdx < 0) state.loopIdx = Math.max(0, i);
+  // Catch the last sentence just before the file ends, so 'ended' (which can stop playback) never fires.
+  const end = Math.min(segEnd(segs, state.loopIdx), (isFinite(audio.duration) ? audio.duration : Infinity) - 0.1);
+  if (t >= end - 0.04) { onSegEnd(state.loopIdx); return; }
+  const left = (end - t) / state.rate;
+  if (left < 0.6 && !endTimer) endTimer = setTimeout(() => { endTimer = 0; step(); }, Math.max(0, left * 1000 - 30));
+}
 function tick() {
   raf = 0;
-  const t = audio.currentTime, segs = activeSegs();
-  const i = idxAt(segs, t);
-  if (!audio.paused && !state.sync && segs.length) {
-    if (looping()) {
-      if (state.loopIdx < 0) state.loopIdx = Math.max(0, i);
-      if (t >= segEnd(segs, state.loopIdx) - 0.04) { onSegEnd(state.loopIdx); }
-    } else { if (i !== state.loopIdx) state.repCount = 1; state.loopIdx = i; }
+  step();
+  if (!state.gapCb) {
+    setActive(idxAt(activeSegs(), audio.currentTime));
+    updateTime(audio.currentTime);
   }
-  setActive(idxAt(segs, audio.currentTime));
-  updateTime(audio.currentTime);
   if (!audio.paused) raf = requestAnimationFrame(tick);
 }
 function kick() { if (!raf) raf = requestAnimationFrame(tick); }
@@ -944,40 +962,44 @@ function onSegEnd(k) {
     if (audio.paused) play();
   };
   if (state.shadow) {
-    audio.pause();
     const len = (segEnd(segs, k) - segs[k].s) / state.rate;
     const wait = Math.min(20, Math.max(1, len * state.gapFactor + 0.3));
     const label = again && state.sentReps !== 1
       ? `따라 말해 보세요 · ${state.repCount}/${state.sentReps === 0 ? '∞' : state.sentReps}`
       : '따라 말해 보세요';
-    startGap(wait, label, go);
+    // Loop the sentence silently during the gap; stay clear of the file's end so 'ended' never fires.
+    const dur = isFinite(audio.duration) ? audio.duration : Infinity;
+    startGap(wait, label, go, { start: segs[k].s, end: Math.max(segs[k].s + 0.2, Math.min(segEnd(segs, k), dur - 0.3)) });
   } else go();
 }
 // End of the whole file: repeat the file, play the next one in the list, or stop.
 function onTrackEnd() {
   if (Date.now() - state.trackEndAt < 1500) return;
   state.trackEndAt = Date.now();
-  audio.pause();
   if (state.fileReps === 0 || state.fileCount < state.fileReps) {
     state.fileCount++;
     state.repCount = 1;
     toast(`처음부터 다시 들어요 (${state.fileCount}/${state.fileReps === 0 ? '∞' : state.fileReps})`, 1800);
-    seekTo(activeSegs()[0] ? activeSegs()[0].s : 0); state.loopIdx = 0; play();
+    seekTo(0); state.loopIdx = 0; play();
     return;
   }
   const q = state.queue;
-  if (!q) return;
+  if (!q) { audio.pause(); return; }
   let pos = q.pos + 1;
   if (pos >= q.ids.length) {
-    if (!state.listLoop) { toast('재생 목록을 다 들었어요.'); return; }
+    if (!state.listLoop) { audio.pause(); toast('재생 목록을 다 들었어요.'); return; }
     pos = 0;
   }
   q.pos = pos;
   selectTrack(q.ids[pos], { autoplay: true, fromStart: true });
 }
-function startGap(sec, label, cb) {
+function startGap(sec, label, cb, loop) {
   stopGap();
-  state.gapCb = cb; state.gapTotal = sec * 1000; state.gapUntil = performance.now() + sec * 1000;
+  state.gapCb = cb; state.gapLoop = loop || null;
+  state.gapTotal = sec * 1000; state.gapUntil = performance.now() + sec * 1000; state.gapUntilMs = Date.now() + sec * 1000;
+  audio.muted = true;
+  if (loop) seekTo(loop.start, true);
+  if (audio.paused) play();
   $('#gapTxt').textContent = label + ' · 누르면 바로 넘어가요';
   $('#gapPill').hidden = false;
   state.gapTimer = setTimeout(finishGap, sec * 1000);
@@ -989,9 +1011,9 @@ function startGap(sec, label, cb) {
   };
   anim();
 }
-function stopGap() { clearTimeout(state.gapTimer); state.gapCb = null; $('#gapPill').hidden = true; }
+function stopGap() { clearTimeout(state.gapTimer); state.gapCb = null; state.gapLoop = null; audio.muted = false; $('#gapPill').hidden = true; }
 function finishGap() { const cb = state.gapCb; stopGap(); if (cb) cb(); }
-function seekTo(t) { try { audio.currentTime = Math.max(0, t + 0.001); } catch (e) {} updateTime(t); }
+function seekTo(t, quiet) { try { audio.currentTime = Math.max(0, t + 0.001); } catch (e) {} if (!quiet) updateTime(t); }
 function play() {
   if (!audio.src) return;
   const p = audio.play();
@@ -999,7 +1021,12 @@ function play() {
 }
 function togglePlay() {
   if (!state.cur || !audio.src) return;
-  if (state.gapCb) { finishGap(); return; }
+  if (state.gapCb) {
+    // Pausing during a shadowing gap stops at the start of the next sentence.
+    const segs = activeSegs(), nx = Math.min(segs.length - 1, state.loopIdx + 1);
+    stopGap(); audio.pause(); seekTo(segs[nx].s); state.loopIdx = nx; state.repCount = 1;
+    return;
+  }
   if (audio.paused) {
     const segs = activeSegs();
     const li = Math.max(0, idxAt(segs, audio.currentTime));
@@ -1077,18 +1104,25 @@ async function lockScreen(on) {
   } catch (e) { wakeLock = null; }
 }
 
-audio.addEventListener('play', () => { $('#icPlay').hidden = true; $('#icPause').hidden = false; $('#btnPlay').setAttribute('aria-label', '일시정지'); kick(); lockScreen(true); });
+audio.addEventListener('play', () => { $('#icPlay').hidden = true; $('#icPause').hidden = false; $('#btnPlay').setAttribute('aria-label', '일시정지'); kick(); lockScreen(true); try { navigator.mediaSession.playbackState = 'playing'; } catch (e) {} });
 audio.addEventListener('pause', () => {
+  // Paused from the lock screen or headphones during a shadowing gap: stop at the next sentence.
+  if (state.gapCb) {
+    const segs = activeSegs(), nx = Math.min(segs.length - 1, state.loopIdx + 1);
+    stopGap(); seekTo(segs[nx].s); state.loopIdx = nx; state.repCount = 1;
+  }
+  try { navigator.mediaSession.playbackState = 'paused'; } catch (e) {}
   $('#icPlay').hidden = false; $('#icPause').hidden = true; $('#btnPlay').setAttribute('aria-label', '재생');
   if (!state.gapCb) lockScreen(false);
   savePos();
 });
-audio.addEventListener('seeked', () => { kick(); });
-audio.addEventListener('timeupdate', () => { if (audio.paused) kick(); throttleSave(); });
+audio.addEventListener('seeked', () => { clearTimeout(endTimer); endTimer = 0; kick(); });
+audio.addEventListener('timeupdate', () => { step(); if (document.visibilityState === 'visible') kick(); if (!state.gapCb) throttleSave(); });
 audio.addEventListener('loadedmetadata', () => updateTime(audio.currentTime));
 audio.addEventListener('ended', () => {
   const segs = activeSegs();
   if (state.sync) return;
+  if (state.gapCb) { if (state.gapLoop) { seekTo(state.gapLoop.start, true); play(); } return; }
   if (segs.length && looping()) onSegEnd(segs.length - 1);
   else onTrackEnd();
 });
@@ -1127,14 +1161,15 @@ async function selectTrack(id, opts = {}) {
   state.fileCount = 1; state.repCount = 1;
   savePos();
   stopGap(); if (state.sync) exitSync();
-  audio.pause();
+  // Moving to the next file in a playlist keeps the element playing, so phones don't suspend the page.
+  if (!opts.autoplay) audio.pause();
   state.cur = t; state.segs = t.segments || []; state.idx = -1; state.loopIdx = -1;
   LS.set('last', id);
   closeNav();
   state.loadingAudio = true;
   $('#btnPlay').disabled = true;
   renderHeader(); renderList(); renderLines();
-  audio.removeAttribute('src'); audio.load();
+  if (!urlCache.has(t.id)) { audio.pause(); audio.removeAttribute('src'); audio.load(); }
   updateTime(0);
   try {
     await getBlob(t);
@@ -1147,20 +1182,29 @@ async function selectTrack(id, opts = {}) {
     audio.addEventListener('loadedmetadata', () => {
       if (pos > 0 && pos < audio.duration - 1) audio.currentTime = pos;
       kick();
-      if (opts.autoplay) { state.loopIdx = 0; play(); }
     }, { once: true });
+    if (opts.autoplay) { state.loopIdx = 0; play(); }
     $('#btnPlay').disabled = false;
     setMediaSession(t);
+    prefetchNext();
   } catch (e) {
     toast(e.message || '음성 파일을 불러오지 못했어요.', 5000);
   } finally {
     if (state.cur === t) { state.loadingAudio = false; renderHeader(); }
   }
 }
+// Load the next playlist file ahead of time so the switch is instant, even with the screen off.
+function prefetchNext() {
+  const q = state.queue;
+  if (!q || q.ids.length < 2) return;
+  const nextId = q.ids[(q.pos + 1) % q.ids.length];
+  const nt = state.tracks.find((x) => x.id === nextId);
+  if (nt && !urlCache.has(nt.id)) getBlob(nt).catch(() => {});
+}
 function setMediaSession(t) {
   if (!('mediaSession' in navigator)) return;
   try {
-    navigator.mediaSession.metadata = new MediaMetadata({ title: t.title || '쉐도잉', artist: '쉐도잉 플레이어' });
+    navigator.mediaSession.metadata = new MediaMetadata({ title: t.title || '쉐도잉', artist: state.queue ? `쉐도잉 · 재생 목록 ${state.queue.pos + 1}/${state.queue.ids.length}` : '쉐도잉 플레이어', artwork: [{ src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' }] });
     navigator.mediaSession.setActionHandler('play', () => togglePlay());
     navigator.mediaSession.setActionHandler('pause', () => audio.pause());
     navigator.mediaSession.setActionHandler('previoustrack', () => stepSeg(-1));
